@@ -2,7 +2,7 @@
 
 namespace app\tests\_pages;
 
-use yii\codeception\BasePage;
+use Helper\BasePage;
 
 /**
  * @property \AcceptanceTester|\FunctionalTester $actor
@@ -28,9 +28,10 @@ class AmendmentCreatePage extends BasePage
      */
     public function fillInValidSampleData($title = 'Neuer Testantrag 1')
     {
-        $this->actor->fillField('#sections_1', $title);
+        $this->actor->wait(1);
         $this->actor->fillField('#initiatorPrimaryName', 'Mein Name');
         $this->actor->fillField('#initiatorEmail', 'test@example.org');
+        $this->actor->fillField('#sections_1', $title);
     }
 
     /**

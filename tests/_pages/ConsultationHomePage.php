@@ -2,7 +2,7 @@
 
 namespace app\tests\_pages;
 
-use yii\codeception\BasePage;
+use Helper\BasePage;
 
 /**
  * Represents contact page
@@ -15,15 +15,17 @@ class ConsultationHomePage extends BasePage
     /**
      * @param int $motionTypeId
      * @param bool $check
+     * @param string $subdomain
+     * @param string $path
      * @return MotionCreatePage
      */
-    public function gotoMotionCreatePage($motionTypeId = 1, $check = true)
+    public function gotoMotionCreatePage($motionTypeId = 1, $check = true, $subdomain = 'stdparteitag', $path = 'std-parteitag')
     {
         $page = MotionCreatePage::openBy(
             $this->actor,
             [
-                'subdomain'        => 'stdparteitag',
-                'consultationPath' => 'std-parteitag',
+                'subdomain'        => $subdomain,
+                'consultationPath' => $path,
                 'motionTypeId'     => $motionTypeId,
             ]
         );
@@ -34,18 +36,18 @@ class ConsultationHomePage extends BasePage
     }
 
     /**
-     * @param int $motionId
+     * @param string $motionSlug
      * @param bool $check
      * @return AmendmentCreatePage
      */
-    public function gotoAmendmentCreatePage($motionId = 2, $check = true)
+    public function gotoAmendmentCreatePage($motionSlug = '321-o-zapft-is', $check = true)
     {
         $page = AmendmentCreatePage::openBy(
             $this->actor,
             [
                 'subdomain'        => 'stdparteitag',
                 'consultationPath' => 'std-parteitag',
-                'motionId'         => $motionId,
+                'motionSlug'       => $motionSlug,
             ]
         );
         if ($check) {

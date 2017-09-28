@@ -5,7 +5,7 @@ namespace app\views\pdfLayouts;
 use Yii;
 use yii\helpers\Html;
 
-class BDKPDF extends \TCPDF
+class BDKPDF extends \FPDI
 {
     private $headerTitle;
     private $headerPrefix;
@@ -15,6 +15,14 @@ class BDKPDF extends \TCPDF
     public function __construct()
     {
         parent::__construct(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+    }
+
+    /**
+     * rewrite AddPage() for correct functionalities with PDF Concatenation
+     */
+    public function AddPage ($orientation = PDF_PAGE_ORIENTATION, $format = PDF_PAGE_FORMAT, $keepmargins = false, $tocpage = false, $footer = true) {
+        parent::AddPage($orientation, $format, $keepmargins, $tocpage);
+        $this->setPrintFooter($footer);
     }
 
     /**
@@ -58,7 +66,7 @@ class BDKPDF extends \TCPDF
         $this->Cell(
             185,
             10,
-            Yii::t('export', 'Page') . ' ' . $this->getAliasNumPage() . ' / ' . $this->getAliasNbPages(),
+            Yii::t('export', 'Page') . ' ' . $this->getGroupPageNo() . ' / ' . $this->getPageGroupAlias(),
             0,
             false,
             'R',

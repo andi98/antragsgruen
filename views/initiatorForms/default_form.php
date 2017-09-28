@@ -28,20 +28,28 @@ $layout     = $controller->layoutParams;
 $layout->loadDatepicker();
 $locale = Tools::getCurrentDateLocale();
 
-echo '<fieldset class="supporterForm supporterFormStd">';
-
-echo '<legend class="green">' . \Yii::t('motion', 'initiators_head') . '</legend>';
-
 if ($initiator->personType == ISupporter::PERSON_NATURAL) {
     $prePrimaryName = Html::encode($initiator->name);
 } else {
     $prePrimaryName = Html::encode($initiator->organization);
 }
-$preContactName = Html::encode($initiator->name);
 $preOrga        = Html::encode($initiator->organization);
+$preContactName = Html::encode($initiator->contactName);
 $preEmail       = Html::encode($initiator->contactEmail);
 $prePhone       = Html::encode($initiator->contactPhone);
 $preResolution  = Tools::dateSql2bootstrapdate($initiator->resolutionDate);
+
+$currentUser = \app\models\db\User::getCurrentUser();
+
+echo '<fieldset class="supporterForm supporterFormStd" data-antragsgruen-widget="frontend/DefaultInitiatorForm"
+                data-contact-name="' . IntVal($motionType->contactName) . '"
+                data-user-data="' . Html::encode(json_encode([
+        'fixed'               => ($currentUser && $currentUser->fixedData),
+        'person_name'         => ($currentUser ? $currentUser->name : ''),
+        'person_organization' => ($currentUser ? $currentUser->organization : ''),
+    ])) . '">';
+
+echo '<legend class="green">' . \Yii::t('motion', 'initiators_head') . '</legend>';
 
 echo '<div class="initiatorData form-horizontal content">';
 
@@ -98,9 +106,15 @@ if ($adminMode) {
 }
 
 echo '<div class="form-group">
-  <label class="col-sm-3 control-label" for="initiatorPrimaryName">' . Yii::t('initiator', 'name') . '</label>
+  <label class="col-sm-3 control-label" for="initiatorPrimaryName">';
+
+echo '<span class="only-person">' . Yii::t('initiator', 'name') . '</span>';
+echo '<span class="only-organization">' . Yii::t('initiator', 'nameOrga') . '</span>';
+
+echo '</label>
   <div class="col-sm-4">
-    <input type="text" class="form-control" id="initiatorPrimaryName" name="Initiator[primaryName]" value="' . $prePrimaryName . '" required>
+    <input type="text" class="form-control" id="initiatorPrimaryName" name="Initiator[primaryName]"
+        value="' . $prePrimaryName . '" autocomplete="name" required>
   </div>
 </div>';
 
@@ -122,14 +136,21 @@ echo '<span class="input-group-addon"><span class="glyphicon glyphicon-calendar"
 echo '</div></div>
 </div>';
 
+
+echo '<div class="form-group row contact-head"><div class="col-sm-9 col-sm-offset-3 contact-head">' .
+    '<h3>' . \Yii::t('initiator', 'contactHead') . '</h3>' .
+    '<div class="hint">(' . \Yii::t('initiator', 'visibilityAdmins') . ')</div></div></div>';
+
 echo '<div class="form-group contactNameRow">
-  <label class="col-sm-3 control-label" for="initiatorContactName">' . Yii::t('initiator', 'orga_contact_name') . '</label>
+  <label class="col-sm-3 control-label" for="initiatorContactName">' . Yii::t('initiator', 'orgaContactName') .
+    '</label>
   <div class="col-sm-4">
-    <input type="text" class="form-control" id="initiatorContactName" name="Initiator[contactName]" value="' . $preContactName . '">
+    <input type="text" class="form-control" id="initiatorContactName" name="Initiator[contactName]"
+    value="' . $preContactName . '" autocomplete="name">
   </div>
 </div>';
 
-if ($motionType->contactEmail != ConsultationMotionType::CONTACT_NA) {
+if ($motionType->contactEmail != ConsultationMotionType::CONTACT_NONE) {
     echo '<div class="form-group">
   <label class="col-sm-3 control-label" for="initiatorEmail">' . Yii::t('initiator', 'email') . '</label>
   <div class="col-sm-4">
@@ -137,14 +158,14 @@ if ($motionType->contactEmail != ConsultationMotionType::CONTACT_NA) {
     if ($motionType->contactEmail == ConsultationMotionType::CONTACT_REQUIRED && !$adminMode) {
         echo 'required ';
     }
-    echo 'value="' . Html::encode($preEmail) . '">
-    <div class="contactPrivacy">' . Yii::t('initiator', 'visibilityAdmins') . '</div>
+
+    echo ' autocomplete="email" value="' . Html::encode($preEmail) . '">
   </div>
 </div>';
 }
 
 
-if ($motionType->contactPhone != ConsultationMotionType::CONTACT_NA) {
+if ($motionType->contactPhone != ConsultationMotionType::CONTACT_NONE) {
     echo '<div class="form-group phone_row">
         <label class="col-sm-3 control-label" for="initiatorPhone">' . Yii::t('initiator', 'phone') . '</label>
   <div class="col-sm-4">
@@ -152,8 +173,7 @@ if ($motionType->contactPhone != ConsultationMotionType::CONTACT_NA) {
     if ($motionType->contactPhone == ConsultationMotionType::CONTACT_REQUIRED && !$adminMode) {
         echo 'required ';
     }
-    echo 'value="' . Html::encode($prePhone) . '">
-    <div class="contactPrivacy">' . Yii::t('initiator', 'visibilityAdmins') . '</div>
+    echo 'autocomplete="tel" value="' . Html::encode($prePhone) . '">
   </div>
 </div>';
 }
@@ -206,7 +226,7 @@ echo '<div id="newInitiatorTemplate" style="display: none;" data-html="' . Html:
 echo '</div>';
 
 
-if ($hasSupporters) {
+if ($hasSupporters && !$adminMode) {
     $getSupporterRow = function (ISupporter $supporter, $hasOrganizations, $allowMoreSupporters) {
         $str = '<div class="form-group supporterRow">';
         $str .= '<div class="col-md-6">';
@@ -293,7 +313,3 @@ if ($hasSupporters) {
 
 
 echo '</fieldset>';
-
-$controller->layoutParams->addOnLoadJS(
-    '$.Antragsgruen.defaultInitiatorForm();'
-);

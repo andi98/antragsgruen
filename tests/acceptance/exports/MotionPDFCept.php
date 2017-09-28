@@ -11,7 +11,7 @@ $I->gotoConsultationHome();
 
 $I->loginAsStdAdmin();
 $motionTypePage = $I->gotoStdAdminPage()->gotoMotionTypes(1);
-$I->selectOption('#pdfLayout', -1);
+$I->selectOption('#pdfLayout', "php-1");
 $motionTypePage->saveForm();
 
 $I->gotoConsultationHome();
@@ -24,7 +24,7 @@ $I->dontSee('PDF');
 
 $I->wantTo('activate PDFs again');
 $motionTypePage = $I->gotoStdAdminPage()->gotoMotionTypes(1);
-$I->selectOption('#pdfLayout', 0);
+$I->selectOption('#pdfLayout', "php0");
 $motionTypePage->saveForm();
 
 $I->gotoConsultationHome();
@@ -47,7 +47,7 @@ if (strlen($pdf) == 0) {
 
 
 $I->wantTo('test the single-motion-PDF from the admin interface');
-$I->loginAndGotoStdAdminPage()->gotoMotionList();
+$I->loginAndGotoMotionList();
 $pdf = $I->downloadLink('.adminMotionTable .motion3 a.pdf');
 if (strlen($pdf) == 0) {
     $I->fail('PDF has no content');

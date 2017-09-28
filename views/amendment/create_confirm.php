@@ -14,13 +14,15 @@ use yii\helpers\Html;
  */
 
 $controller = $this->context;
-$params     = $controller->layoutParams;
+$layout     = $controller->layoutParams;
+$motion     = $amendment->getMyMotion();
 
 $this->title = Yii::t('amend', $mode == 'create' ? 'amendment_create' : 'amendment_edit');
 
-$params->addBreadcrumb($amendment->getMyMotion()->titlePrefix, UrlHelper::createMotionUrl($amendment->getMyMotion()));
-$params->addBreadcrumb(\Yii::t('amend', 'amendment'), UrlHelper::createAmendmentUrl($amendment, 'edit'));
-$params->addBreadcrumb(\Yii::t('amend', 'confirm'));
+$layout->robotsNoindex = true;
+$layout->addBreadcrumb($motion->getBreadcrumbTitle(), UrlHelper::createMotionUrl($motion));
+$layout->addBreadcrumb(\Yii::t('amend', 'amendment'), UrlHelper::createAmendmentUrl($amendment, 'edit'));
+$layout->addBreadcrumb(\Yii::t('amend', 'confirm'));
 
 echo '<h1>' . Yii::t('amend', 'confirm_amendment') . '</h1>';
 
@@ -72,7 +74,7 @@ echo Html::beginForm('', 'post', ['id' => 'amendmentConfirmForm']);
 echo '<div class="content">
         <div style="float: right;">
             <button type="submit" name="confirm" class="btn btn-success">
-                <span class="glyphicon glyphicon-ok-sign"></span> ' . \Yii::t('amend', 'button_submit') . '
+                <span class="glyphicon glyphicon-ok-sign"></span> ' . $amendment->getSubmitButtonLabel() . '
             </button>
         </div>
         <div style="float: left;">

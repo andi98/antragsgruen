@@ -10,14 +10,19 @@ class AntragsgruenApp
 
     public $dbConnection          = null;
     public $siteSubdomain         = null;
+    public $redis                 = null;
     public $prettyUrl             = true;
+    public $tablePrefix           = '';
     public $resourceBase          = '/';
-    public $baseLanguage          = 'de';
+    public $baseLanguage          = 'en';
     public $randomSeed            = '';
     public $multisiteMode         = false;
-    public $domainPlain           = 'http://antragsgruen-v3.localhost/';
+    public $domainPlain           = 'http://antragsgruen.local/';
     public $domainSubdomain       = '';
-    public $hasWurzelwerk         = true;
+    public $cookieDomain          = null;
+    public $hasWurzelwerk         = false;
+    public $hasSaml               = false;
+    public $samlOrgaFile          = null;
     public $createNeedsWurzelwerk = false;
     public $prependWWWToSubdomain = true;
     public $pdfLogo               = '';
@@ -33,9 +38,27 @@ class AntragsgruenApp
     public $tmpDir                = '/tmp/';
     public $xelatexPath           = null;
     public $xdvipdfmx             = null;
+    public $pdfunitePath          = null;
+    public $pdfExportConcat       = true;
+    public $pdfExportIntegFrame   = false;
+    public $localLayouts          = [];
+    public $localMessages         = [];
+    public $imageMagickPath       = null;
+    public $sitePurgeAfterDays    = null;
+    public $mode                  = 'production'; // [production | sandbox]
 
     /** @var null|array */
-    public $mailService = null;
+    public $mailService = ['transport' => 'sendmail'];
+
+    /**
+     * @return AntragsgruenApp
+     */
+    public static function getInstance()
+    {
+        /** @var AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app;
+    }
 
     /**
      * @return bool
@@ -43,8 +66,8 @@ class AntragsgruenApp
     private function isHttps()
     {
         // Needs to be equal to Yii2's web/Request.php
-        return isset($_SERVER['HTTPS']) && (strcasecmp($_SERVER['HTTPS'], 'on') === 0 || $_SERVER['HTTPS'] == 1)
-        || isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strcasecmp($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') === 0;
+        return isset($_SERVER['HTTPS']) && (strcasecmp($_SERVER['HTTPS'], 'on') === 0 || $_SERVER['HTTPS'] == 1) ||
+            isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strcasecmp($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') === 0;
     }
 
     /**
@@ -59,7 +82,7 @@ class AntragsgruenApp
             $this->resourceBase = $_SERVER['SCRIPT_NAME'];
             $this->resourceBase = str_replace('index.php', '', $this->resourceBase);
             $this->domainPlain  = ($this->isHttps() ? 'https' : 'http');
-            $this->domainPlain .= '://' . $_SERVER['HTTP_HOST'] . '/';
+            $this->domainPlain  .= '://' . $_SERVER['HTTP_HOST'] . '/';
         }
     }
 
@@ -101,5 +124,21 @@ class AntragsgruenApp
         }
 
         \Yii::$app->cache->flush();
+    }
+
+    /**
+     * @return bool
+     */
+    public static function hasPhpExcel()
+    {
+        return class_exists('\PHPExcel', true);
+    }
+
+    /**
+     * @return bool
+     */
+    public function isSamlActive()
+    {
+        return (class_exists('\SimpleSAML_Auth_Simple') && $this->hasSaml);
     }
 }

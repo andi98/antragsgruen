@@ -13,7 +13,7 @@ class BDK extends IPDFLayout
     protected $pdf;
 
     /**
-     * @return \TCPDF
+     * @return \FPDI
      */
     public function createPDFClass()
     {
@@ -49,7 +49,7 @@ class BDK extends IPDFLayout
         $pdf->setPrintFooter(true);
 
 
-        $title = $motion->getConsultation()->getSettings()->pdfIntroduction;
+        $title = $motion->getMyConsultation()->getSettings()->pdfIntroduction;
         $pdf->SetY(40);
         $pdf->SetFont("helvetica", "B", 13);
         $pdf->writeHTMLCell(185, 0, 10, 10, $title, 0, 1, 0, true, 'R');
@@ -98,7 +98,7 @@ class BDK extends IPDFLayout
         $amendmentData .= '<br><br>';
 
         $amendmentData .= '<table>';
-        $amendmentData .= '<tr><th style="width: 28%;">Antragsteller/innen:</th>';
+        $amendmentData .= '<tr><th style="width: 28%;">Antragsteller*innen:</th>';
         $amendmentData .= '<td>' . Html::encode($amendment->getInitiatorsStr()) . '</td></tr>';
 
         $amendmentData .= '</table>';

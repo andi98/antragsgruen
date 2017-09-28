@@ -18,30 +18,46 @@ use app\models\db\User;
 use app\models\db\UserNotification;
 use app\models\exceptions\Access;
 use app\models\exceptions\FormError;
-use app\models\forms\AntragsgruenInitForm;
+use app\models\forms\ConsultationActivityFilterForm;
 use app\models\settings\AntragsgruenApp;
 
 class ConsultationController extends Base
 {
     /**
-     *
+     * @param \yii\base\Action $action
+     * @return bool
+     * @throws \yii\web\BadRequestHttpException
+     */
+    public function beforeAction($action)
+    {
+        $return = parent::beforeAction($action);
+        if (!$this->consultation) {
+            $this->consultationNotFound();
+            return false;
+        }
+        return $return;
+    }
+
+    /**
+     * @return string
      */
     public function actionSearch()
     {
-        if (!isset($_REQUEST['query']) || trim($_REQUEST['query']) == '') {
+        $query = $this->getRequestValue('query');
+        if (!$query || trim($query) == '') {
             \yii::$app->session->setFlash('error', \Yii::t('con', 'search_no_query'));
             return $this->redirect(UrlHelper::createUrl('consultation/index'));
         }
 
-        $results = $this->consultation->fulltextSearch($_REQUEST['query'], [
+        $results = $this->consultation->fulltextSearch($query, [
             'backTitle' => 'Suche',
-            'backUrl'   => UrlHelper::createUrl(['consultation/search', 'query' => $_REQUEST['query']]),
+            'backUrl'   => UrlHelper::createUrl(['consultation/search', 'query' => $query]),
         ]);
 
         return $this->render(
             'search_results',
             [
-                'query'   => $_REQUEST['query'],
+                'query'   => $query,
                 'results' => $results
             ]
         );
@@ -49,7 +65,7 @@ class ConsultationController extends Base
 
 
     /**
-     *
+     * @return string
      */
     public function actionFeedmotions()
     {
@@ -75,7 +91,7 @@ class ConsultationController extends Base
     }
 
     /**
-     *
+     * @return string
      */
     public function actionFeedamendments()
     {
@@ -101,7 +117,7 @@ class ConsultationController extends Base
     }
 
     /**
-     *
+     * @return string
      */
     public function actionFeedcomments()
     {
@@ -127,7 +143,7 @@ class ConsultationController extends Base
     }
 
     /**
-     *
+     * @return string
      */
     public function actionFeedall()
     {
@@ -184,8 +200,8 @@ class ConsultationController extends Base
         $user = User::getCurrentUser();
         $con  = $this->consultation;
 
-        if (isset($_POST['save'])) {
-            $newNotis = (isset($_POST['notifications']) ? $_POST['notifications'] : []);
+        if ($this->isPostSet('save')) {
+            $newNotis = \Yii::$app->request->post('notifications', []);
             if (in_array('motion', $newNotis)) {
                 UserNotification::addNotification($user, $con, UserNotification::NOTIFICATION_NEW_MOTION);
             } else {
@@ -201,7 +217,12 @@ class ConsultationController extends Base
             } else {
                 UserNotification::removeNotification($user, $con, UserNotification::NOTIFICATION_NEW_COMMENT);
             }
-            \Yii::$app->session->setFlash('success', 'Gespeichert.');
+            if (in_array('amendmentMyMotion', $newNotis)) {
+                UserNotification::addNotification($user, $con, UserNotification::NOTIFICATION_AMENDMENT_MY_MOTION);
+            } else {
+                UserNotification::removeNotification($user, $con, UserNotification::NOTIFICATION_AMENDMENT_MY_MOTION);
+            }
+            \Yii::$app->session->setFlash('success', \Yii::t('base', 'saved'));
         }
 
         $notifications = UserNotification::getUserConsultationNotis($user, $this->consultation);
@@ -219,7 +240,7 @@ class ConsultationController extends Base
         if (!User::currentUserHasPrivilege($this->consultation, User::PRIVILEGE_CONTENT_EDIT)) {
             throw new Access('No permissions to edit this page');
         }
-        if (MessageSource::savePageData($this->consultation, $pageKey, $_POST['data'])) {
+        if (MessageSource::savePageData($this->consultation, $pageKey, \Yii::$app->request->post('data'))) {
             return '1';
         } else {
             return '0';
@@ -229,9 +250,9 @@ class ConsultationController extends Base
     /**
      * @return string
      */
-    public function actionMaintainance()
+    public function actionMaintenance()
     {
-        return $this->renderContentPage('maintainance');
+        return $this->renderContentPage('maintenance');
     }
 
     /**
@@ -334,7 +355,7 @@ class ConsultationController extends Base
             return;
         }
 
-        $data = json_decode($_POST['data'], true);
+        $data = json_decode(\Yii::$app->request->post('data'), true);
         if (!is_array($data)) {
             \Yii::$app->session->setFlash('error', 'Could not parse input');
             return;
@@ -353,40 +374,25 @@ class ConsultationController extends Base
             }
         }
 
+        $this->consultation->flushCacheWithChildren();
         $this->consultation->refresh();
 
-        \Yii::$app->session->setFlash('success', 'Saved');
+        \Yii::$app->session->setFlash('success', \Yii::t('base', 'saved'));
     }
-
-    /**
-     * @param string $url
-     * @return string
-     */
-    public function actionShariffbackend($url)
-    {
-        \yii::$app->response->format = \yii\web\Response::FORMAT_RAW;
-        \yii::$app->response->headers->add('Content-Type', 'application/json');
-        $shariff = new \Heise\Shariff\Backend([
-            'domain'   => $_SERVER['HTTP_HOST'],
-            'services' => ['Facebook', 'Twitter'],
-            'cache'    => [
-                'ttl'      => 60,
-                'cacheDir' => $this->getParams()->tmpDir,
-            ]
-        ]);
-        return json_encode($shariff->get($url));
-    }
-
 
     /**
      * @return string
      */
     public function actionIndex()
     {
+        if ($this->consultation->getForcedMotion()) {
+            $this->redirect(UrlHelper::createMotionUrl($this->consultation->getForcedMotion()));
+        }
+
         $this->layout = 'column2';
         $this->consultationSidebar($this->consultation);
 
-        if (isset($_POST['saveAgenda'])) {
+        if (isset(\Yii::$app->request->post()['saveAgenda'])) {
             $this->saveAgenda();
         }
 
@@ -413,5 +419,20 @@ class ConsultationController extends Base
                 'saveUrl'      => $saveUrl,
             ]
         );
+    }
+
+    /**
+     * @param int $page
+     *
+     * @return string
+     */
+    public function actionActivitylog($page = 0)
+    {
+        $this->layout = 'column2';
+        $this->consultationSidebar($this->consultation);
+
+        $form = new ConsultationActivityFilterForm($this->consultation);
+        $form->setPage($page);
+        return $this->render('activity_log', ['form' => $form]);
     }
 }

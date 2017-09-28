@@ -8,6 +8,8 @@ use app\models\db\Consultation;
 use app\models\db\Motion;
 use app\models\db\MotionComment;
 use app\models\db\Site;
+use app\models\exceptions\FormError;
+use app\models\settings\AntragsgruenApp;
 use Yii;
 use yii\helpers\Url;
 
@@ -20,17 +22,17 @@ class UrlHelper
     private static $currentConsultation = null;
 
     /**
-     * @param Site $site
+     * @param Site|null $site
      */
-    public static function setCurrentSite(Site $site)
+    public static function setCurrentSite($site)
     {
         static::$currentSite = $site;
     }
 
     /**
-     * @param Consultation $consultation
+     * @param Consultation|null $consultation
      */
-    public static function setCurrentConsultation(Consultation $consultation)
+    public static function setCurrentConsultation($consultation)
     {
         static::$currentConsultation = $consultation;
     }
@@ -49,7 +51,9 @@ class UrlHelper
      */
     private static function getParams()
     {
-        return \Yii::$app->params;
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app;
     }
 
 
@@ -80,7 +84,10 @@ class UrlHelper
         if (in_array(
             $route[0],
             [
-                'consultation/legal', 'consultation/privacy', 'admin/index/admins', 'admin/index/consultations',
+                'consultation/legal',
+                'consultation/privacy',
+                'admin/index/admins',
+                'admin/index/consultations',
             ]
         )) {
             unset($route['consultationPath']);
@@ -106,7 +113,7 @@ class UrlHelper
     }
 
     /**
-     * @param string $route
+     * @param string|array $route
      * @return string
      */
     public static function createLoginUrl($route)
@@ -125,7 +132,17 @@ class UrlHelper
     public static function homeUrl()
     {
         if (static::$currentConsultation) {
-            return static::createUrl('consultation/index');
+            if (static::$currentConsultation->getSettings()->forceMotion) {
+                $forceMotion = static::$currentConsultation->getSettings()->forceMotion;
+                $motion      = static::$currentConsultation->getMotion($forceMotion);
+                if ($motion) {
+                    return static::createMotionUrl($motion);
+                } else {
+                    return static::createUrl('consultation/index');
+                }
+            } else {
+                return static::createUrl('consultation/index');
+            }
         } else {
             return static::createUrl('manager/index');
         }
@@ -142,23 +159,26 @@ class UrlHelper
         }
 
         $params = static::getParams();
-        if (mb_strpos($url, $params->resourceBase) === 0) {
-            $url = mb_substr($url, mb_strlen($params->resourceBase));
-        } elseif ($url[0] == '/') {
-            $url = mb_substr($url, 1);
-        }
 
         if (static::$currentSite) {
             if ($params->domainSubdomain) {
-                return str_replace(
-                    '<subdomain:[\w_-]+>',
-                    static::$currentSite->subdomain,
-                    $params->domainSubdomain
-                ) . $url;
+                if (mb_strpos($url, $params->resourceBase) === 0) {
+                    $url = mb_substr($url, mb_strlen($params->resourceBase));
+                } elseif ($url[0] == '/') {
+                    $url = mb_substr($url, 1);
+                }
+                $dom = str_replace('<subdomain:[\w_-]+>', static::$currentSite->subdomain, $params->domainSubdomain);
+                return $dom . $url;
             } else {
+                if ($url[0] == '/') {
+                    $url = mb_substr($url, 1);
+                }
                 return $params->domainPlain . $url;
             }
         } else {
+            if ($url[0] == '/') {
+                $url = mb_substr($url, 1);
+            }
             return $params->domainPlain . $url;
         }
     }
@@ -169,9 +189,19 @@ class UrlHelper
      */
     public static function createWurzelwerkLoginUrl($route)
     {
+        /** @var \app\models\settings\AntragsgruenApp $params */
+        $params = \Yii::$app->params;
+
         $target_url = Url::toRoute($route);
+
         if (Yii::$app->user->isGuest) {
-            return Url::toRoute(['user/loginwurzelwerk', 'backUrl' => $target_url]);
+            if ($params->isSamlActive()) {
+                return Url::toRoute(['user/loginsaml', 'backUrl' => $target_url]);
+            } elseif ($params->hasWurzelwerk) {
+                return Url::toRoute(['user/loginwurzelwerk', 'backUrl' => $target_url]);
+            } else {
+                return '';
+            }
         } else {
             return $target_url;
         }
@@ -180,12 +210,12 @@ class UrlHelper
     /**
      * @param Motion $motion
      * @param string $mode
-     * @param array $params
+     * @param array $addParams
      * @return string
      */
     public static function createMotionUrl(Motion $motion, $mode = 'view', $addParams = [])
     {
-        $params = array_merge(['motion/' . $mode, 'motionId' => $motion->id], $addParams);
+        $params = array_merge(['motion/' . $mode, 'motionSlug' => $motion->getMotionSlug()], $addParams);
         return static::createUrl($params);
     }
 
@@ -198,9 +228,9 @@ class UrlHelper
         return static::createUrl(
             [
                 'motion/view',
-                'motionId'  => $motionComment->motionId,
-                'commentId' => $motionComment->id,
-                '#'         => 'comm' . $motionComment->id
+                'motionSlug' => $motionComment->motion->getMotionSlug(),
+                'commentId'  => $motionComment->id,
+                '#'          => 'comm' . $motionComment->id
             ]
         );
     }
@@ -215,7 +245,7 @@ class UrlHelper
     {
         $params = array_merge([
             'amendment/' . $mode,
-            'motionId'    => $amendment->motionId,
+            'motionSlug'  => $amendment->getMyMotion()->getMotionSlug(),
             'amendmentId' => $amendment->id
         ], $addParams);
         return static::createUrl($params);
@@ -230,11 +260,42 @@ class UrlHelper
         return static::createUrl(
             [
                 'amendment/view',
-                'motionId'    => $amendmentComment->amendment->motionId,
+                'motionSlug'  => $amendmentComment->amendment->getMyMotion()->getMotionSlug(),
                 'amendmentId' => $amendmentComment->amendmentId,
                 'commentId'   => $amendmentComment->id,
                 '#'           => 'comm' . $amendmentComment->id
             ]
         );
+    }
+
+    /**
+     * Returns the subdomain or null, if this is the main domain
+     * Throws an error if the given URL does not belong to the current system (hacking attempt?)
+     *
+     * @param string $url
+     * @return string|null
+     * @throws FormError
+     */
+    public static function getSubdomain($url)
+    {
+        /** @var AntragsgruenApp $params */
+        $params = Yii::$app->params;
+
+        $urlParts = parse_url($url);
+        $scheme   = (isset($urlParts['scheme']) ? $urlParts['scheme'] : $_SERVER['REQUEST_SCHEME']);
+        $host     = (isset($urlParts['host']) ? $urlParts['host'] : $_SERVER['HTTP_HOST']);
+        $fullhost = $scheme . '://' . $host . '/';
+        if ($params->domainPlain == $fullhost) {
+            return null;
+        } else {
+            $preg = str_replace('<subdomain:[\\w_-]+>', '[\\w_-]+', $params->domainSubdomain);
+            $preg = '/^' . preg_quote($preg, '/') . '$/u';
+            $preg = str_replace('\\[\\\\w_\\-\\]\\+', '(?<subdomain>[\\w_-]+)', $preg);
+            if (preg_match($preg, $fullhost, $matches)) {
+                return $matches['subdomain'];
+            } else {
+                throw new FormError('Unknown domain: ' . $urlParts['host']);
+            }
+        }
     }
 }

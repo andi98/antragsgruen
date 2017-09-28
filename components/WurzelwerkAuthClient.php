@@ -133,7 +133,7 @@ class WurzelwerkAuthClient extends OpenId
      */
     protected function defaultReturnUrl()
     {
-        $params = $_GET;
+        $params = \Yii::$app->request->get();
         $keys   = array_keys($params);
         foreach ($keys as $name) {
             if (strncmp('openid', $name, 6) === 0) {
@@ -167,13 +167,13 @@ class WurzelwerkAuthClient extends OpenId
         $user = new User();
         //$user->name            = $attributes['namePerson/friendly'];
         $user->name            = ''; // https://github.com/CatoTH/antragsgruen/issues/77
-        if (isset($attributes['contact/email'])) {
+        if (isset($attributes['contact/email']) && filter_var($attributes['contact/email'], FILTER_VALIDATE_EMAIL)) {
             $user->email          = $attributes['contact/email'];
             $user->emailConfirmed = 1;
         }
         $user->auth            = $auth;
         $user->status          = User::STATUS_CONFIRMED;
-        // @TODO E-Mail
+        
         if (!$user->save()) {
             throw new \Exception('Could not create user: ' . $user->getErrors());
         }

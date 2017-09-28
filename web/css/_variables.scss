@@ -13,6 +13,7 @@ $sidebarActionFont: 'sans-serif' !default;
 $buttonFont: 'sans-serif' !default;
 $motionFixedFont: Courier, sans-serif !default;
 $motionStdFontSize: 14px !default;
+$blockquote-font-size: 14px !default;
 
 $headingFont: 'sans-serif' !default;
 $headingPrimaryText: black !default;
@@ -32,3 +33,10 @@ $createMotionBtnColor: white !default;
 
 $bookmarkAmendmentColor: black !default;
 $bookmarkCommentColor: black !default;
+
+$screen-lg-min: 10000px; // deaktivieren
+$container-md: 1024px;
+$container-desktop: 1024px;
+$grid-float-breakpoint: 992px; // $screen-md-min;
+
+$icon-font-path: "../fonts/";

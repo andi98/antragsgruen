@@ -47,8 +47,8 @@ Line 2, part 2</li></ul>',
      */
     public function testLinkAttributeEncoding()
     {
-        $orig   = '<a href="http://www.example.org?datum=20150724&amp;ausgabe=an-d">Test</a>';
-        $expect = ['<a href="http://www.example.org?datum=20150724&amp;ausgabe=an-d">Test</a>'];
+        $orig   = '<p><a href="http://www.example.org?datum=20150724&amp;ausgabe=an-d">Test</a></p>';
+        $expect = ['<p><a href="http://www.example.org?datum=20150724&amp;ausgabe=an-d">Test</a></p>'];
 
         $orig = HTMLTools::cleanSimpleHtml($orig);
         $out  = HTMLTools::sectionSimpleHTML($orig);
@@ -194,6 +194,46 @@ oii</pre><p>More</p><pre>PRE</pre></li></ul>'
         ];
         $orig   = HTMLTools::cleanSimpleHtml($orig);
         $out    = HTMLTools::sectionSimpleHTML($orig);
+        $this->assertEquals($expect, $out);
+    }
+
+    /**
+     */
+    public function testRemoveSplitFragments1()
+    {
+        $orig   = '<p>Test</p><ul><li>Item 1</li></ul><ul><li>Item 2</li></ul><ul><li>Item 3</li></ul><p>Test 2</p><ul><li>Item 1</li></ul>';
+        $expect = '<p>Test</p><ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul><p>Test 2</p><ul><li>Item 1</li></ul>';
+        $out    = HTMLTools::removeSectioningFragments($orig);
+        $this->assertEquals($expect, $out);
+    }
+
+    /**
+     */
+    public function testRemoveSplitFragments2()
+    {
+        $orig   = "<p>Test</p>\n<ul>\n <li>Item 1</li></ul> \n <ul><li>Item 2</li></ul>\n<ul><li>Item 3</li></ul><p>Test 2</p><ul><li>Item 1</li></ul>";
+        $expect = '<p>Test</p><ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul><p>Test 2</p><ul><li>Item 1</li></ul>';
+        $out    = HTMLTools::removeSectioningFragments($orig);
+        $this->assertEquals($expect, $out);
+    }
+
+    /**
+     */
+    public function testRemoveSplitFragments3()
+    {
+        $orig   = '<p>Test</p><ol><li>Item 1</li></ol><ol><li>Item 2</li></ol><ol><li>Item 3</li></ol><p>Test 2</p><ol><li>Item 1</li></ol>';
+        $expect = '<p>Test</p><ol><li>Item 1</li><li>Item 2</li><li>Item 3</li></ol><p>Test 2</p><ol><li>Item 1</li></ol>';
+        $out    = HTMLTools::removeSectioningFragments($orig);
+        $this->assertEquals($expect, $out);
+    }
+
+    /**
+     */
+    public function testRemoveSplitFragments4()
+    {
+        $orig   = '<p>Test</p><ol><li>Item 1</li></ol><ol start="3"><li>Item 2</li></ol><ol start="4"><li>Item 3</li></ol><p>Test 2</p><ol><li>Item 1</li></ol>';
+        $expect = '<p>Test</p><ol><li>Item 1</li></ol><ol start="3"><li>Item 2</li><li>Item 3</li></ol><p>Test 2</p><ol><li>Item 1</li></ol>';
+        $out    = HTMLTools::removeSectioningFragments($orig);
         $this->assertEquals($expect, $out);
     }
 }

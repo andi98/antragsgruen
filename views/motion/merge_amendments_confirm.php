@@ -16,8 +16,9 @@ use yii\helpers\Html;
 $controller = $this->context;
 $layout     = $controller->layoutParams;
 
+$layout->robotsNoindex = true;
 $layout->loadFuelux();
-$layout->addBreadcrumb($newMotion->motionType->titleSingular, UrlHelper::createMotionUrl($newMotion));
+$layout->addBreadcrumb($newMotion->getBreadcrumbTitle(), UrlHelper::createMotionUrl($newMotion));
 $layout->addBreadcrumb(\Yii::t('amend', 'merge_confirm_title'));
 
 $title       = str_replace('%TITLE%', $newMotion->motionType->titleSingular, \Yii::t('amend', 'merge_title'));
@@ -50,7 +51,7 @@ echo Html::beginForm('', 'post', ['id' => 'motionConfirmForm']);
 echo '<div class="content">
         <div style="float: right;">
             <button type="submit" name="confirm" class="btn btn-success">
-                <span class="glyphicon glyphicon-ok-sign"></span> ' . \Yii::t('amend', 'button_submit') . '
+                <span class="glyphicon glyphicon-ok-sign"></span> ' . \Yii::t('base', 'save') . '
             </button>
         </div>
         <div style="float: left;">
@@ -61,7 +62,3 @@ echo '<div class="content">
     </div>';
 
 echo Html::endForm();
-
-if ($deleteDraftId) {
-    $controller->layoutParams->addOnLoadJS('localStorage.removeItem(' . json_encode($deleteDraftId) . ');');
-}

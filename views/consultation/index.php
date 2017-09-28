@@ -6,7 +6,6 @@ use app\models\db\AmendmentSupporter;
 use app\models\db\Motion;
 use app\models\db\MotionSupporter;
 use yii\helpers\Html;
-use yii\helpers\Url;
 
 /**
  * @var yii\web\View $this
@@ -49,7 +48,7 @@ echo $layout->getMiniMenu('sidebarSmall');
 echo '<div class="content contentPage contentPageWelcome" style="overflow: auto;">';
 
 if (count($consultation->motionTypes) == 1 && $consultation->motionTypes[0]->deadlineMotions != '') {
-    echo '<p class="deadlineCircle">Antrags&shy;schluss: ';
+    echo '<p class="deadlineCircle">' . \Yii::t('con', 'deadline_circle') . ': ';
     echo Tools::formatMysqlDateTime($consultation->motionTypes[0]->deadlineMotions) . "</p>\n";
 }
 
@@ -69,14 +68,12 @@ if ($admin) {
     echo Yii::t('base', 'save') . '</button></div>';
 
     echo Html::endForm();
-    $layout->addOnLoadJS('$.Antragsgruen.contentPageEdit();');
+    $layout->addAMDModule('frontend/ContentPageEdit');
 }
 
 echo '</div>';
 
 echo $controller->showErrors();
-
-require(__DIR__ . DIRECTORY_SEPARATOR . $consultation->getSettings()->getStartLayoutView() . '.php');
 
 if ($myself) {
     if (count($myMotions)) {
@@ -100,6 +97,13 @@ if ($myself) {
             echo ': ' . Html::encode($motion->getStati()[$motion->status]);
             if ($motion->status == Motion::STATUS_WITHDRAWN) {
                 echo '</span>';
+            }
+            if ($motion->status == Motion::STATUS_COLLECTING_SUPPORTERS) {
+                echo '<div>' . \Yii::t('motion', 'support_collect_status') . ': ';
+                echo count($motion->getSupporters());
+                echo ' <small>(' . \Yii::t('motion', 'support_collect_min') . ': ';
+                echo $motion->motionType->getMotionSupportTypeClass()->getMinNumberOfSupporters();
+                echo ')</small></div>';
             }
             echo "</li>\n";
         }
@@ -127,11 +131,21 @@ if ($myself) {
             if ($amendmentSupport->role == AmendmentSupporter::ROLE_SUPPORTER) {
                 echo ' (' . Yii::t('amend', 'supporter') . ')';
             }
+            echo ': ' . Html::encode($amendment->getStati()[$amendment->status]);
             if ($amendment->status == Amendment::STATUS_WITHDRAWN) {
                 echo '</span>';
+            }
+            if ($amendment->status == Amendment::STATUS_COLLECTING_SUPPORTERS) {
+                echo '<div>' . \Yii::t('motion', 'support_collect_status') . ': ';
+                echo count($amendment->getSupporters());
+                echo ' <small>(' . \Yii::t('motion', 'support_collect_min') . ': ';
+                echo $amendment->getMyMotion()->motionType->getAmendmentSupportTypeClass()->getMinNumberOfSupporters();
+                echo ')</small></div>';
             }
             echo '</li>';
         }
         echo '</ul></div>';
     }
 }
+
+require(__DIR__ . DIRECTORY_SEPARATOR . $consultation->getSettings()->getStartLayoutView() . '.php');

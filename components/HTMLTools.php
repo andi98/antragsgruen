@@ -1,25 +1,48 @@
 <?php
-/*
- *
- * ==========
- * d        d
- * e   f    g
- * hjklkljkjlk
- */
+
 namespace app\components;
 
+use app\models\db\Amendment;
 use app\models\exceptions\Internal;
 use yii\helpers\Html;
 use yii\helpers\HtmlPurifier;
 
 class HTMLTools
 {
+    public static $KNOWN_BLOCK_ELEMENTS = ['div', 'ul', 'li', 'ol', 'blockquote', 'pre', 'p', 'section',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+
+    /**
+     * @param string $str
+     * @return bool
+     */
+    public static function isStringCachable($str)
+    {
+        return strlen($str) > 1000;
+    }
+
+    /**
+     * Required by HTML Purifier to handle Umlaut domains
+     */
+    public static function loadNetIdna2()
+    {
+        $dir  = __DIR__ . DIRECTORY_SEPARATOR . 'Net_IDNA2-0.1.1' . DIRECTORY_SEPARATOR . 'Net' . DIRECTORY_SEPARATOR;
+        $dir2 = $dir . 'IDNA2' . DIRECTORY_SEPARATOR;
+        @require_once $dir2 . 'Exception.php';
+        @require_once $dir2 . 'Exception' . DIRECTORY_SEPARATOR . 'Nameprep.php';
+        @require_once $dir . 'IDNA2.php';
+    }
+
     /**
      * @param string $html
      * @return string
      */
     public static function cleanMessedUpHtmlCharacters($html)
     {
+        if (function_exists('normalizer_normalize')) {
+            $html = normalizer_normalize($html);
+        }
+
         $html = str_replace(chr(194) . chr(160), ' ', $html); // Long space
         $html = str_replace(chr(0xef) . chr(0xbb) . chr(0xbf), '', $html); // Byte order Mark
 
@@ -42,7 +65,7 @@ class HTMLTools
      * @param string $html
      * @return string
      */
-    public static function cleanUntrustedHtml($html)
+    public static function cleanTrustedHtml($html)
     {
         $html = static::cleanMessedUpHtmlCharacters($html);
         $html = str_replace("\r", '', $html);
@@ -51,21 +74,28 @@ class HTMLTools
     }
 
     /**
-     * @param string $html
+     * @param string $htmlIn
+     * @param bool $linkify
      * @return string
      */
-    public static function correctHtmlErrors($html)
+    public static function correctHtmlErrors($htmlIn, $linkify = false)
     {
+        $cacheKey = 'correctHtmlErrors_' . md5($htmlIn);
+        if (static::isStringCachable($htmlIn) && \Yii::$app->getCache()->exists($cacheKey)) {
+            return \Yii::$app->getCache()->get($cacheKey);
+        }
+
+        static::loadNetIdna2();
         $str = HtmlPurifier::process(
-            $html,
-            function ($config) {
+            $htmlIn,
+            function ($config) use ($linkify) {
                 /** @var \HTMLPurifier_Config $config */
                 $conf = [
                     'HTML.Doctype'                            => 'HTML 4.01 Transitional',
                     'HTML.AllowedElements'                    => null,
                     'Attr.AllowedClasses'                     => null,
                     'CSS.AllowedProperties'                   => null,
-                    'AutoFormat.Linkify'                      => true,
+                    'AutoFormat.Linkify'                      => $linkify,
                     'AutoFormat.AutoParagraph'                => false,
                     'AutoFormat.RemoveSpansWithoutAttributes' => false,
                     'AutoFormat.RemoveEmpty'                  => false,
@@ -78,31 +108,122 @@ class HTMLTools
                 foreach ($conf as $key => $val) {
                     $config->set($key, $val);
                 }
+                $def                                                    = $config->getHTMLDefinition(true);
+                $def->info_global_attr['data-moving-partner-id']        = new \HTMLPurifier_AttrDef_Text();
+                $def->info_global_attr['data-moving-partner-paragraph'] = new \HTMLPurifier_AttrDef_Text();
             }
         );
         $str = static::cleanMessedUpHtmlCharacters($str);
+        if (static::isStringCachable($htmlIn)) {
+            \Yii::$app->getCache()->set($cacheKey, $str);
+        }
+
         return $str;
     }
-
 
     /**
      * @param string $html
      * @return string
      */
-    public static function cleanSimpleHtml($html)
+    public static function wrapOrphanedTextWithP($html)
     {
-        $html = str_replace("\r", '', $html);
+        $dom = static::html2DOM($html);
 
+        $hasChanged = false;
+        /** @var \DOMElement $wrapP */
+        $wrapP = null;
+        for ($i = 0; $i < $dom->childNodes->length; $i++) {
+            $childNode = $dom->childNodes->item($i);
+            /** @var \DOMNode $childNode */
+            $isText   = is_a($childNode, \DOMText::class);
+            $isInline = !in_array($childNode->nodeName, static::$KNOWN_BLOCK_ELEMENTS);
+            if ($isText || $isInline) {
+                $hasChanged = true;
+                if ($wrapP === null) {
+                    $wrapP = $dom->ownerDocument->createElement('p');
+                }
+                $dom->removeChild($childNode);
+                $wrapP->appendChild($childNode);
+                $i--;
+            } else {
+                if ($wrapP) {
+                    if ($wrapP->childNodes->length > 1 || trim($wrapP->childNodes->item(0)->nodeValue) != '') {
+                        $first = $wrapP->childNodes->item(0);
+                        $last  = $wrapP->childNodes->item($wrapP->childNodes->length - 1);
+                        if (is_a($first, \DOMText::class)) {
+                            $first->nodeValue = preg_replace('/^[ \\n]*/', '', $first->nodeValue);
+                        }
+                        if (is_a($last, \DOMText::class)) {
+                            $last->nodeValue = preg_replace('/\s*$/', '', $last->nodeValue);
+                        }
+                        $dom->insertBefore($wrapP, $childNode);
+                    }
+                    $wrapP = null;
+                }
+            }
+        }
+        if ($wrapP && ($wrapP->childNodes->length > 1 || trim($wrapP->childNodes->item(0)->nodeValue) != '')) {
+            $first = $wrapP->childNodes->item(0);
+            $last  = $wrapP->childNodes->item($wrapP->childNodes->length - 1);
+            if (is_a($first, \DOMText::class)) {
+                $first->nodeValue = preg_replace('/^\s*/', '', $first->nodeValue);
+            }
+            if (is_a($last, \DOMText::class)) {
+                $last->nodeValue = preg_replace('/\s*$/', '', $last->nodeValue);
+            }
+            $dom->appendChild($wrapP);
+        }
+        if ($hasChanged) {
+            return static::renderDomToHtml($dom, true);
+        } else {
+            return $html;
+        }
+    }
+
+    /**
+     * @param string $htmlIn
+     * @param string[] $forbiddenFormattings
+     * @return string
+     */
+    public static function cleanSimpleHtml($htmlIn, $forbiddenFormattings = [])
+    {
+        $cacheKey = 'cleanSimpleHtml_' . implode(',', $forbiddenFormattings) . '_' . md5($htmlIn);
+        if (static::isStringCachable($htmlIn) && \Yii::$app->getCache()->exists($cacheKey)) {
+            return \Yii::$app->getCache()->get($cacheKey);
+        }
+
+        $html = str_replace("\r", '', $htmlIn);
+
+        // When coming from amendment creating
+        // should only happen in some edge cases where the editor was not used correctly
+        $html = preg_replace('/<del[^>]*>.*<\/del>/siuU', '', $html);
+
+        // Remove <a>...</a>
+        $html = preg_replace('/<a>(.*)<\/a>/siuU', '$1', $html);
+
+        $allowedTags = [
+            'p', 'strong', 'em', 'ul', 'ol', 'li', 'span', 'a', 'br', 'blockquote',
+            'sub', 'sup', 'pre', 'h1', 'h2', 'h3', 'h4'
+        ];
+
+        $allowedClasses = ['underline', 'subscript', 'superscript'];
+        if (!in_array('strike', $forbiddenFormattings)) {
+            $allowedClasses[] = 'strike';
+        }
+
+        $allowedAttributes = ['style', 'href', 'class'];
+
+        static::loadNetIdna2();
+        $html = str_replace('<p></p>', '<p>###EMPTY###</p>', $html);
         $html = HtmlPurifier::process(
             $html,
-            function ($config) {
-                $allowedTags = 'p,strong,em,ul,ol,li,span,a,br,blockquote,sub,sup,pre';
+            function ($config) use ($allowedTags, $allowedClasses, $allowedAttributes) {
                 /** @var \HTMLPurifier_Config $config */
                 $conf = [
                     'HTML.Doctype'                            => 'HTML 4.01 Transitional',
-                    'HTML.AllowedElements'                    => $allowedTags,
-                    'HTML.AllowedAttributes'                  => 'style,href,class',
-                    'Attr.AllowedClasses'                     => 'underline,strike,subscript,superscript',
+                    'HTML.AllowedElements'                    => implode(',', $allowedTags),
+                    'HTML.AllowedAttributes'                  => implode(',', $allowedAttributes),
+                    'Attr.AllowedClasses'                     => implode(',', $allowedClasses),
                     'CSS.AllowedProperties'                   => '',
                     'AutoFormat.Linkify'                      => true,
                     'AutoFormat.AutoParagraph'                => false,
@@ -119,6 +240,11 @@ class HTMLTools
                 }
             }
         );
+        $html = str_replace('<p>###EMPTY###</p>', '<p></p>', $html);
+
+        // Text always needs to be in a block container. This is the normal case anyway,
+        // however sometimes CKEditor + Lite Change Tracking produces messed up HTML that we need to fix here
+        $html = static::wrapOrphanedTextWithP($html);
 
         $html = str_ireplace("</li>", "</li>\n", $html);
         $html = str_ireplace("<ul>", "<ul>\n", $html);
@@ -129,12 +255,35 @@ class HTMLTools
         $html = preg_replace("/\\n+/siu", "\n", $html);
         $html = str_replace("<p><br>\n", "<p>", $html);
         $html = str_replace("<br>\n</p>", "</p>", $html);
-        $html = preg_replace('/ +<\/p>/siu', '</p>', $html);
-        $html = preg_replace('/ +<br>/siu', '<br>', $html);
         $html = str_replace('&nbsp;', ' ', $html);
 
         $html = static::cleanMessedUpHtmlCharacters($html);
+        $html = preg_replace('/<p> +/siu', '<p>', $html);
+        $html = preg_replace('/ +<\/p>/siu', '</p>', $html);
+        $html = preg_replace('/ +<\/li>/siu', '</li>', $html);
+        $html = preg_replace('/ +<br>/siu', '<br>', $html);
 
+        $html = trim($html);
+
+        if (static::isStringCachable($htmlIn)) {
+            \Yii::$app->getCache()->set($cacheKey, $html);
+        }
+
+        return $html;
+    }
+
+    /**
+     * @param string $html
+     * @return string
+     */
+    public static function stripEmptyBlockParagraphs($html)
+    {
+        do {
+            $htmlPre = $html;
+            $html    = preg_replace('/<(p|div|li|ul|ol|h1|h2|h3|h4|h5)>\s*<\/\1>/siu', '', $html);
+        } while ($htmlPre != $html);
+
+        $html = preg_replace("/\\n\s*\\n+/siu", "\n", $html);
         $html = trim($html);
 
         return $html;
@@ -222,7 +371,9 @@ class HTMLTools
                             $newPost = '</' . $child->nodeName . '>' . $post;
                             $newArrs = static::sectionSimpleHTMLInt($child, $split, $splitListItems, $newPre, $newPost);
                             $return  = array_merge($return, $newArrs);
-                        } elseif (in_array($child->nodeName, ['ul', 'blockquote', 'p', 'pre'])) {
+                        } elseif (in_array($child->nodeName,
+                            ['ul', 'blockquote', 'p', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                        ) {
                             $newPre  = $pre . '<' . $child->nodeName . '>';
                             $newPost = '</' . $child->nodeName . '>' . $post;
                             $newArrs = static::sectionSimpleHTMLInt($child, $split, $splitListItems, $newPre, $newPost);
@@ -255,26 +406,23 @@ class HTMLTools
 
     /**
      * @param string $html
-     * @return \DOMNode
+     * @param bool $correctBefore
+     * @return \DOMElement
      */
-    public static function html2DOM($html)
+    public static function html2DOM($html, $correctBefore = true)
     {
-        $html = HtmlPurifier::process(
-            $html,
-            [
-                'HTML.Doctype' => 'HTML 4.01 Transitional',
-                'HTML.Trusted' => true,
-                'CSS.Trusted'  => true,
-            ]
-        );
+        if ($correctBefore) {
+            $html = static::correctHtmlErrors($html);
+        }
 
         $src_doc = new \DOMDocument();
         $src_doc->loadHTML('<html><head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 </head><body>' . $html . "</body></html>");
         $bodies = $src_doc->getElementsByTagName('body');
+        $str    = $bodies->item(0);
 
-        return $bodies->item(0);
+        return $str;
     }
 
 
@@ -292,17 +440,66 @@ class HTMLTools
      */
     public static function sectionSimpleHTML($html, $splitListItems = true)
     {
-        $src_doc = new \DOMDocument();
-        $src_doc->loadHTML(
-            '<html><head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-            </head><body>' . $html . '</body></html>'
-        );
-        $bodies = $src_doc->getElementsByTagName('body');
-        $body   = $bodies->item(0);
-
-        /** @var \DOMElement $body */
+        $body = static::html2DOM($html);
         return static::sectionSimpleHTMLInt($body, true, $splitListItems, '', '');
+    }
+
+    /**
+     * Tries to restore the original HTML after re-combining reviously split markup.
+     * Currently, this only joins adjacent top-level lists.
+     *
+     * @param string $html
+     * @return string
+     */
+    public static function removeSectioningFragments($html)
+    {
+        $body     = static::html2DOM($html);
+        $children = $body->childNodes;
+        for ($i = 0; $i < $children->length; $i++) {
+            $appendToPrev = false;
+            $child        = $children->item($i);
+            if (is_a($child, \DOMText::class) && trim($child->nodeValue) == '') {
+                $body->removeChild($child);
+                $i--;
+            }
+            /** @var \DOMElement $child */
+
+            if ($i == 0) {
+                continue;
+            }
+            if (strtolower($child->nodeName) == 'ul' && strtolower($children->item($i - 1)->nodeName) == 'ul') {
+                $appendToPrev = true;
+            }
+            if (strtolower($child->nodeName) == 'ol' && strtolower($children->item($i - 1)->nodeName) == 'ol') {
+                $startPrev = $children->item($i - 1)->getAttribute('start');
+                if ($startPrev) {
+                    $startPrev = IntVal($startPrev);
+                } else {
+                    $startPrev = 1;
+                }
+                $currExpected = $startPrev;
+                foreach ($children->item($i - 1)->childNodes as $tmpChild) {
+                    if (is_a($tmpChild, \DOMElement::class) && strtolower($tmpChild->nodeName) == 'li') {
+                        $currExpected++;
+                    }
+                }
+                $currStart = $child->getAttribute('start');
+                if (!$currStart || IntVal($currStart) == $currExpected) {
+                    $appendToPrev = true;
+                }
+            }
+
+            if ($appendToPrev) {
+                foreach ($child->childNodes as $subchild) {
+                    $child->removeChild($subchild);
+                    $children->item($i - 1)->appendChild($subchild);
+                }
+                $body->removeChild($child);
+                $i--;
+            }
+        }
+
+        return static::renderDomToHtml($body, true);
     }
 
 
@@ -345,8 +542,8 @@ class HTMLTools
 
         $text = preg_replace_callback("/<a.*href=[\"'](.*)[\"'].*>(.*)<\/a>/siU", function ($matches) {
             $begr = trim($matches[2]);
-            if ($begr == "") {
-                return "";
+            if ($begr == '') {
+                return '';
             }
 
             if (static::$LINKS) {
@@ -363,31 +560,50 @@ class HTMLTools
             $text = "/" . $matches[1] . "/";
             return $text;
         }, $text);
+
+        $text = preg_replace_callback("/<ins[^>]*>(.*)<\/ins>/siU", function ($matches) {
+            $ins  = \Yii::t('diff', 'plain_text_ins');
+            $text = '[' . $ins . ']' . $matches[1] . '[/' . $ins . ']';
+            return $text;
+        }, $text);
+
+        $text = preg_replace_callback("/<del[^>]*>(.*)<\/del>/siU", function ($matches) {
+            $ins  = \Yii::t('diff', 'plain_text_del');
+            $text = '[' . $ins . ']' . $matches[1] . '[/' . $ins . ']';
+            return $text;
+        }, $text);
+
         $text = str_ireplace("</tr>", "\n", $text);
 
+        $appendLineBr = function ($matches) {
+            $text = $matches[1];
+            if ($matches[1] != "\n" && $matches[1] != ">" && $matches[1] != "") {
+                $text .= "\n";
+            }
+            $text .= $matches[2];
+            if (isset($matches[3]) && $matches[3] != "\n" && $matches[3] != "") {
+                $text .= "\n";
+            }
+            if (isset($matches[3])) {
+                $text .= $matches[3];
+            }
+            return $text;
+        };
 
-        $text_old = "";
-        while ($text != $text_old) {
-            $text_old = $text;
-            $text     = preg_replace_callback("/(.)?<div.*>(.*)<\/div>(.)?/siU", function ($matches) {
-                $text = $matches[1];
-                if ($matches[1] != "\n" && $matches[1] != ">" && $matches[1] != "") {
-                    $text .= "\n";
-                }
-                $text .= $matches[2];
-                if (isset($matches[3]) && $matches[3] != "\n" && $matches[3] != "<" && $matches[3] != "") {
-                    $text .= "\n";
-                }
-                if (isset($matches[3])) {
-                    $text .= $matches[3];
-                }
-                return $text;
-            }, $text);
+        $textOld = '';
+        while ($text != $textOld) {
+            $textOld = $text;
+            $text    = preg_replace_callback("/(.)?<div.*>(.*)<\/div>(.)/siU", $appendLineBr, $text);
+            $text    = preg_replace_callback("/(.)?<p.*>(.*)<\/p>(.)/siU", $appendLineBr, $text);
+            $text    = preg_replace_callback("/(.)?<h1.*>(.*)<\/h1>(.)/siU", $appendLineBr, $text);
+            $text    = preg_replace_callback("/(.)?<h2.*>(.*)<\/h2>(.)/siU", $appendLineBr, $text);
+            $text    = preg_replace_callback("/(.)?<h3.*>(.*)<\/h3>(.)/siU", $appendLineBr, $text);
+            $text    = preg_replace_callback("/(.)?<h4.*>(.*)<\/h4>(.)/siU", $appendLineBr, $text);
         }
 
         $text = strip_tags($text);
 
-        $text = html_entity_decode($text, ENT_COMPAT, "UTF-8");
+        $text = html_entity_decode($text, ENT_COMPAT, 'UTF-8');
 
         if ($linksAtEnd && count(static::$LINK_CACHE) > 0) {
             $text .= "\n\n\nLinks:\n";
@@ -395,6 +611,7 @@ class HTMLTools
                 $text .= "[$nr] $link\n";
             }
         }
+
         return trim($text);
     }
 
@@ -433,6 +650,21 @@ class HTMLTools
     }
 
     /**
+     * @param Amendment $amendment
+     * @param string $direction [top, bottom, right, left]
+     * @return string
+     */
+    public static function amendmentDiffTooltip(Amendment $amendment, $direction = '')
+    {
+        $url = UrlHelper::createAmendmentUrl($amendment, 'ajax-diff');
+        return '<button tabindex="0" type="button" data-toggle="popover" ' .
+            'class="amendmentAjaxTooltip link" data-initialized="0" ' .
+            'data-url="' . Html::encode($url) . '" title="' . \Yii::t('amend', 'ajax_diff_title') . '" ' .
+            'data-amendment-id="' . $amendment->id . '" data-placement="' . Html::encode($direction) . '">' .
+            '<span class="glyphicon glyphicon-eye-open"></span></button>';
+    }
+
+    /**
      * @param string $formName
      * @param array $options
      * @param string $value
@@ -457,29 +689,35 @@ class HTMLTools
 
     /**
      * @param \DOMNode $node
+     * @param bool $skipBody
      * @return string
      */
-    public static function renderDomToHtml(\DOMNode $node)
+    public static function renderDomToHtml(\DOMNode $node, $skipBody = false)
     {
         if (is_a($node, \DOMElement::class)) {
             if ($node->nodeName == 'br') {
                 return '<br>';
             }
             /** @var \DOMElement $node */
-            $str = '<' . $node->nodeName;
-            foreach ($node->attributes as $key => $val) {
-                $val = $node->getAttribute($key);
-                $str .= ' ' . $key . '="' . Html::encode($val) . '"';
+            $str = '';
+            if (!$skipBody || strtolower($node->nodeName) != 'body') {
+                $str .= '<' . $node->nodeName;
+                foreach ($node->attributes as $key => $val) {
+                    $val = $node->getAttribute($key);
+                    $str .= ' ' . $key . '="' . Html::encode($val) . '"';
+                }
+                $str .= '>';
             }
-            $str .= '>';
             foreach ($node->childNodes as $child) {
                 $str .= static::renderDomToHtml($child);
             }
-            $str .= '</' . $node->nodeName . '>';
+            if (!$skipBody || strtolower($node->nodeName) != 'body') {
+                $str .= '</' . $node->nodeName . '>';
+            }
             return $str;
         } else {
             /** @var \DOMText $node */
-            return $node->data;
+            return Html::encode($node->data);
         }
     }
 
@@ -491,15 +729,15 @@ class HTMLTools
     {
         if (is_a($node, \DOMElement::class)) {
             /** @var \DOMNode $node */
-            $node = [
+            $nodeArr = [
                 'name'     => $node->nodeName,
                 'classes'  => '',
                 'children' => [],
             ];
             foreach ($node->childNodes as $child) {
-                $node['children'][] = static::getDomDebug($child);
+                $nodeArr['children'][] = static::getDomDebug($child);
             }
-            return $node;
+            return $nodeArr;
         } else {
             /** @var \DOMText $node */
             return [
@@ -545,5 +783,92 @@ class HTMLTools
         $html = preg_replace($wwwsearch, $wwwreplace, $html);
 
         return $html;
+    }
+
+    /**
+     * @param string $str
+     * @return string
+     */
+    public static function encodeAddShy($str)
+    {
+        $str       = Html::encode($str);
+        $shyAfters = ['itglieder', 'enden', 'voll', 'undex', 'gierten', 'wahl', 'andes'];
+        foreach ($shyAfters as $shyAfter) {
+            $str = str_replace($shyAfter, $shyAfter . '&shy;', $str);
+        }
+        return $str;
+    }
+
+    /**
+     * @param \DOMNode $node
+     * @return \DOMNode[]
+     */
+    private static function stripInsDelMarkersInt(\DOMNode $node)
+    {
+        if (!is_a($node, \DOMElement::class)) {
+            return [$node];
+        }
+
+        /** @var \DOMElement $node */
+        if ($node->nodeName == 'del') {
+            return [];
+        }
+        if ($node->nodeName == 'ins') {
+            $children = [];
+            while ($node->childNodes->length > 0) {
+                $child = $node->childNodes->item(0);
+                $node->removeChild($child);
+                $children[] = $child;
+            }
+            return $children;
+        }
+
+        $classes = [];
+        if ($node->getAttribute('class')) {
+            $classes = explode(' ', $node->getAttribute('class'));
+        }
+        if (in_array('deleted', $classes)) {
+            return [];
+        }
+
+        if (in_array('inserted', $classes)) {
+            $classes    = array_filter($classes, function ($class) {
+                return ($class != 'inserted');
+            });
+            $newClasses = trim(implode(' ', $classes));
+            if ($newClasses != '') {
+                $node->setAttribute('class', $newClasses);
+            } else {
+                $node->removeAttribute('class');
+            }
+        }
+
+        $children = [];
+        while ($node->childNodes->length > 0) {
+            $child = $node->childNodes->item(0);
+            $node->removeChild($child);
+            $modifiedChild = static::stripInsDelMarkersInt($child);
+            $children      = array_merge($children, $modifiedChild);
+        }
+        foreach ($children as $child) {
+            $node->appendChild($child);
+        }
+
+        return [$node];
+    }
+
+    /**
+     * @param string $html
+     * @return string
+     */
+    public static function stripInsDelMarkers($html)
+    {
+        $body         = static::html2DOM($html);
+        $strippedBody = static::stripInsDelMarkersInt($body);
+        $str          = '';
+        foreach ($strippedBody[0]->childNodes as $child) {
+            $str .= static::renderDomToHtml($child);
+        }
+        return $str;
     }
 }

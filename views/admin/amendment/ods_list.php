@@ -1,13 +1,14 @@
 <?php
 
+use app\components\HTMLTools;
 use app\models\db\Motion;
-use \app\components\opendocument\Spreadsheet;
+use CatoTH\HTML2OpenDocument\Spreadsheet;
 use yii\helpers\Html;
 
 /**
  * @var $this yii\web\View
  * @var Motion[] $motions
- * @var bool $textCombined
+ * @var bool $withdrawn
  */
 
 /** @var \app\controllers\Base $controller */
@@ -19,21 +20,23 @@ $DEBUG = false;
 /** @var \app\models\settings\AntragsgruenApp $params */
 $params = \yii::$app->params;
 
-$tmpZipFile   = $params->tmpDir . uniqid('zip-');
-$templateFile = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'OpenOffice-Template.ods';
-copy($templateFile, $tmpZipFile);
-
-$zip = new ZipArchive();
-if ($zip->open($tmpZipFile) !== true) {
-    die("cannot open <$tmpZipFile>\n");
-}
-
-$content = $zip->getFromName('content.xml');
-$doc     = new Spreadsheet($content);
-
+$doc = new Spreadsheet([
+    'tmpPath'   => $params->tmpDir,
+    'trustHtml' => true,
+]);
 
 $currCol = $firstCol = 1;
 
+$hasAgendaItems = false;
+foreach ($motions as $motion) {
+    if ($motion->agendaItem) {
+        $hasAgendaItems = true;
+    }
+}
+
+if ($hasAgendaItems) {
+    $COL_AGENDA_ITEM = $currCol++;
+}
 $COL_PREFIX     = $currCol++;
 $COL_INITIATOR  = $currCol++;
 $COL_FIRST_LINE = $currCol++;
@@ -54,6 +57,11 @@ $doc->setMinRowHeight(1, 1.5);
 
 
 // Heading
+
+if ($hasAgendaItems) {
+    $doc->setCell(2, $COL_AGENDA_ITEM, Spreadsheet::TYPE_TEXT, \Yii::t('export', 'agenda_item'));
+    $doc->setCellStyle(2, $COL_AGENDA_ITEM, [], ['fo:font-weight' => 'bold']);
+}
 
 $doc->setCell(2, $COL_PREFIX, Spreadsheet::TYPE_TEXT, \Yii::t('export', 'prefix_short'));
 $doc->setCellStyle(2, $COL_PREFIX, [], ['fo:font-weight' => 'bold']);
@@ -97,9 +105,13 @@ foreach ($motions as $motion) {
 
     $title = '<strong>' . $motion->getTitleWithPrefix() . '</strong>';
     $title .= ' (von: ' . Html::encode(implode(', ', $initiatorNames)) . ')';
+    if ($hasAgendaItems && $motion->agendaItem) {
+        $doc->setCell($row, $COL_AGENDA_ITEM, Spreadsheet::TYPE_TEXT, $motion->agendaItem->getShownCode(true));
+    }
+    $title = HTMLTools::correctHtmlErrors($title);
     $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_HTML, $title, null, ['fo:wrap-option' => 'no-wrap']);
 
-    $amendments = $motion->getVisibleAmendmentsSorted();
+    $amendments = $motion->getVisibleAmendmentsSorted($withdrawn);
     foreach ($amendments as $amendment) {
         $row++;
 
@@ -116,11 +128,15 @@ foreach ($motions as $motion) {
         }
         $firstLine = $amendment->getFirstDiffLine();
 
+        if ($hasAgendaItems && $motion->agendaItem) {
+            $doc->setCell($row, $COL_AGENDA_ITEM, Spreadsheet::TYPE_TEXT, $motion->agendaItem->getShownCode(true));
+        }
         $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_TEXT, $amendment->titlePrefix);
         $doc->setCell($row, $COL_INITIATOR, Spreadsheet::TYPE_TEXT, implode(', ', $initiatorNames));
         $doc->setCell($row, $COL_CONTACT, Spreadsheet::TYPE_TEXT, implode(', ', $initiatorContacs));
         $doc->setCell($row, $COL_FIRST_LINE, Spreadsheet::TYPE_NUMBER, $firstLine);
-        $doc->setCell($row, $COL_REASON, Spreadsheet::TYPE_HTML, $amendment->changeExplanation);
+        $changeExplanation = HTMLTools::correctHtmlErrors($amendment->changeExplanation);
+        $doc->setCell($row, $COL_REASON, Spreadsheet::TYPE_HTML, $changeExplanation);
 
         $change = '';
         if ($amendment->changeEditorial != '') {
@@ -130,6 +146,7 @@ foreach ($motions as $motion) {
         foreach ($amendment->getSortedSections(false) as $section) {
             $change .= $section->getSectionType()->getAmendmentODS();
         }
+        $change = HTMLTools::correctHtmlErrors($change);
         $doc->setCell($row, $COL_CHANGE, Spreadsheet::TYPE_HTML, $change);
     }
 
@@ -138,7 +155,7 @@ foreach ($motions as $motion) {
 }
 
 try {
-    $content = $doc->create();
+    echo $doc->finishAndGetDocument();
 } catch (\Exception $e) {
     if (in_array(YII_ENV, ['dev', 'test'])) {
         var_dump($e);
@@ -147,13 +164,3 @@ try {
     }
     die();
 }
-if ($DEBUG) {
-    $doc->debugOutput();
-}
-
-$zip->deleteName('content.xml');
-$zip->addFromString('content.xml', $content);
-$zip->close();
-
-readfile($tmpZipFile);
-unlink($tmpZipFile);

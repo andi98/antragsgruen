@@ -3,27 +3,34 @@
 namespace app\models\sectionTypes;
 
 use app\components\latex\Content;
-use app\components\opendocument\Text;
 use app\components\UrlHelper;
+use app\components\VarStream;
 use app\models\db\MotionSection;
 use app\models\exceptions\FormError;
+use app\models\settings\AntragsgruenApp;
 use app\views\pdfLayouts\IPDFLayout;
 use yii\helpers\Html;
+use CatoTH\HTML2OpenDocument\Text;
 
 class PDF extends ISectionType
 {
     /**
-     * @return string
+     * @return null|string
      */
     public function getPdfUrl()
     {
         /** @var MotionSection $section */
         $section = $this->section;
-        $url     = UrlHelper::createUrl(
+        $motion  = $section->getMotion();
+        if (!$motion || !$section->data) {
+            return null;
+        }
+
+        $url = UrlHelper::createUrl(
             [
                 'motion/viewpdf',
-                'motionId'  => $section->motionId,
-                'sectionId' => $section->sectionId
+                'motionSlug' => $section->getMotion()->getMotionSlug(),
+                'sectionId'  => $section->sectionId
             ]
         );
         return $url;
@@ -37,8 +44,9 @@ class PDF extends ISectionType
         /** @var MotionSection $section */
         $type = $this->section->getSettings();
         $str  = '';
-        if ($this->section->data) {
-            $str .= '<a href="' . Html::encode($this->getPdfUrl()) . '" alt="Current PDF">Current PDF</a>';
+        $url  = $this->getPdfUrl();
+        if ($url) {
+            $str      .= '<a href="' . Html::encode($this->getPdfUrl()) . '">Current PDF</a>';
             $required = false;
         } else {
             $required = ($type->required ? 'required' : '');
@@ -49,7 +57,7 @@ class PDF extends ISectionType
             <input type="file" class="form-control" id="sections_' . $type->id . '" ' . $required .
             ' name="sections[' . $type->id . ']">
         </div>';
-        if ($this->section->data) {
+        if ($url) {
             $str .= '<br style="clear: both;">';
         }
         return $str;
@@ -64,7 +72,7 @@ class PDF extends ISectionType
     }
 
     /**
-     * @param string $data
+     * @param array $data
      * @throws FormError
      */
     public function setMotionData($data)
@@ -84,7 +92,7 @@ class PDF extends ISectionType
     }
 
     /**
-     * @param string $data
+     * @param array $data
      * @throws FormError
      */
     public function setAmendmentData($data)
@@ -110,7 +118,7 @@ class PDF extends ISectionType
             return '';
         }
 
-        $pdfUrl = $this->getPdfUrl();
+        $pdfUrl    = $this->getPdfUrl();
         $iframeUrl = UrlHelper::createUrl(['motion/embeddedpdf', 'file' => $pdfUrl]);
 
         $str = '<iframe class="pdfViewer" src="' . Html::encode($iframeUrl) . '"></iframe>';
@@ -128,22 +136,135 @@ class PDF extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printMotionToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printMotionToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         if ($this->isEmpty()) {
             return;
         }
 
-        $pdf->writeHTML('<p>[PDF]</p>'); // @TODO
+        /** @var AntragsgruenApp $params */
+        $params = \yii::$app->params;
+
+        $abs = 5;
+        $pdf->setY($pdf->getY() + $abs);
+
+        $title = $this->section->getSettings()->title;
+        if (str_replace('pdf', '', strtolower($title)) == strtolower($title)) {
+            $title .= ' [PDF]';
+        }
+        $pdf->writeHTML('<h3>' . $title . '</h3>');
+
+        $data = base64_decode($this->section->data);
+
+        $pageCount = $pdf->setSourceFile(VarStream::createReference($data));
+
+        $pdim      = $pdf->getPageDimensions();
+        $printArea = array(
+            'w' => $pdim['wk'] - ($pdim['lm'] + $pdim['rm']),
+            'h' => $pdim['hk'] - ($pdim['tm'] + $pdim['bm']),
+        );
+        $pdf->setX($pdim['lm']);
+
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $page = $pdf->ImportPage($pageNo);
+            $dim  = $pdf->getTemplatesize($page);
+            if ($params->pdfExportConcat) {
+                $pdf->AddPage($dim['w'] > $dim['h'] ? 'L' : 'P', array($dim['w'], $dim['h']), false, false, false);
+                $pdf->useTemplate($page);
+            } else {
+                $scale = min(array(
+                    1,
+                    $printArea['w'] / $dim['w'],
+                    $printArea['h'] / $dim['h'],
+                ));
+                $print = array(
+                    'w' => $scale * $dim['w'],
+                    'h' => $scale * $dim['h'],
+                );
+                $curX  = $pdf->getX();
+                if ($curX > $pdim['lm'] and $print['w'] < $pdim['wk'] - ($curX + $pdim['rm'])) {
+                    $curX += $abs;
+                    $curY = $pdf->getY() - $lastprint['h'];
+                } else {
+                    $curX = $pdim['lm'];
+                    $curY = $pdf->getY() + $abs;
+                }
+                $print['x'] = $curX;
+                if ($print['h'] < $pdim['hk'] - ($curY + $pdim['bm'])) {
+                    $print['y'] = $curY;
+                } else {
+                    $pdf->AddPage();
+                    $print['y'] = $pdim['tm'];
+                }
+                $pdf->useTemplate($page, $print['x'], $print['y'], $print['w'], $print['h']);
+
+                if (is_numeric($params->pdfExportIntegFrame)) {
+                    $pdf->Rect($print['x'], $print['y'], $print['w'], $print['h'], 'D', ['all' => ['width' => $params->pdfExportIntegFrame, 'color' => [0, 0, 0], 'dash' => 0]]);
+                } elseif (is_array($params->pdfExportIntegFrame)) {
+                    $config   = $params->pdfExportIntegFrame;
+                    $color    = [0, 0, 0];
+                    $lw       = 0.1;
+                    $absolute = true;
+                    if (isset($config['color'])) {
+                        $color = $config['color'];
+                        unset($config['color']);
+                    }
+                    if (isset($config['lw'])) {
+                        $linewith = $config['lw'];
+                        unset($config['lw']);
+                    }
+                    if (isset($config['abs'])) {
+                        $absolute = $config['abs'];
+                        unset($config['abs']);
+                    }
+                    foreach ($config as $key => $length) {
+                        if (in_array($key, ['tld', 'tlr', 'trd', 'trl', 'blu', 'blr', 'bru', 'brl'])) {
+                            if (in_array(substr($key, -1), ['u', 'l'])) {
+                                $length = -$length;
+                            }
+                            if (!$abs) {
+                                if (in_array(substr($key, -1), ['r', 'l'])) {
+                                    $length = $length * $print['w'];
+                                } else {
+                                    $length = $length * $print['h'];
+                                }
+                            }
+                            $larr = [];
+                            if (in_array(substr($key, -1), ['u', 'd'])) {
+                                $larr['x'] = 0;
+                                $larr['y'] = $length;
+                            } else {
+                                $larr['x'] = $length;
+                                $larr['y'] = 0;
+                            }
+                            if (substr($key, 0, 1) == 't') {
+                                $line['y'] = $print['y'];
+                            } else {
+                                $line['y'] = $print['y'] + $print['h'];
+                            }
+                            if (substr($key, 1, 1) == 'l') {
+                                $line['x'] = $print['x'];
+                            } else {
+                                $line['x'] = $print['x'] + $print['w'];
+                            }
+                            $pdf->Line($line['x'], $line['y'], $line['x'] + $larr['x'], $line['y'] + $larr['y'], ['width' => $linewith, 'color' => $color]);
+                        }
+                    }
+                }
+
+                $pdf->setXY($print['x'] + $print['w'], $print['y'] + $print['h']);
+                $lastprint = $print;
+            }
+        }
     }
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         $this->printMotionToPDF($pdfLayout, $pdf);
     }
@@ -153,7 +274,6 @@ class PDF extends ISectionType
      */
     public function getMotionPlainText()
     {
-
         return '[PDF]';
     }
 
@@ -201,7 +321,7 @@ class PDF extends ISectionType
 
     /**
      * @param Text $odt
-     * @return mixed
+     * @return void
      */
     public function printMotionToODT(Text $odt)
     {
@@ -211,7 +331,7 @@ class PDF extends ISectionType
 
     /**
      * @param Text $odt
-     * @return mixed
+     * @return void
      */
     public function printAmendmentToODT(Text $odt)
     {

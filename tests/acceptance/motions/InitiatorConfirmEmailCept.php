@@ -23,6 +23,7 @@ $I->see('E-Mail sent to: test@example.org');
 $I->wantTo('create an amendment');
 
 $I->gotoConsultationHome()->gotoAmendmentCreatePage();
+$I->wait(1);
 $I->fillField('#sections_1', 'New title');
 $I->fillField('#initiatorPrimaryName', 'My Name');
 $I->fillField('#initiatorEmail', 'test@example.org');
@@ -33,10 +34,10 @@ $I->see('E-Mail sent to: test@example.org');
 
 
 $I->wantTo('screen the motion / amendment');
-$I->gotoStdAdminPage()->gotoMotionList()->gotoMotionEdit(AcceptanceTester::FIRST_FREE_MOTION_ID);
+$I->gotoMotionList()->gotoMotionEdit(AcceptanceTester::FIRST_FREE_MOTION_ID);
 $I->submitForm('#motionScreenForm', [], 'screen');
 $I->see('E-Mail sent to: test@example.org');
 
-$I->gotoStdAdminPage()->gotoMotionList()->gotoAmendmentEdit(AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
+$I->gotoMotionList()->gotoAmendmentEdit(AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
 $I->submitForm('#amendmentScreenForm', [], 'screen');
 $I->see('E-Mail sent to: test@example.org');

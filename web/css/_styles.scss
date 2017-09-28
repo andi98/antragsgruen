@@ -1,6 +1,114 @@
 @charset "UTF-8";
 
-@import "base_layout";
+button.link {
+  background: transparent;
+  border: none;
+}
+
+.hideIfEmpty:empty {
+  display: none;
+}
+
+.fueluxSelectHolder {
+  position: relative; // fuelux
+}
+
+del, ul.deleted, ol.deleted, blockquote.deleted, pre.deleted, div.deleted, p.deleted {
+  color: #880000;
+  text-decoration: line-through;
+}
+
+ins, ul.inserted, ol.inserted, blockquote.inserted, pre.inserted, div.inserted, p.inserted {
+  color: #008800;
+  text-decoration: underline;
+}
+
+del.space, ins.space, del.formatting, ins.formatting {
+  font-style: italic;
+  font-size: 0.8em;
+  display: inline-block;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+
+.label {
+  @extend label;
+}
+
+.toggle {
+  .toggle-group {
+    .btn {
+      border: none;
+    }
+  }
+}
+
+.texteditorBox {
+  min-height: 100px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+  -webkit-transition: border-color ease-in-out 0.15s, box-shadow ease-in-out 0.15s;
+  -o-transition: border-color ease-in-out 0.15s, box-shadow ease-in-out 0.15s;
+  transition: border-color ease-in-out 0.15s, box-shadow ease-in-out 0.15s;
+}
+
+.texteditor {
+  background-color: white;
+
+  &.boxed {
+    @extend .texteditorBox;
+  }
+  @include motionParagraphStd();
+  &.fixedWidthFont {
+    font-family: $motionFixedFont;
+    //letter-spacing: -0.5px;
+    color: $motionFixedFontColor;
+  }
+
+  > * {
+    padding-bottom: 5px;
+    padding-top: 5px;
+    padding-left: $fixedWidthTextStdPadding - 40;
+    margin-bottom: 5px;
+  }
+  > span:first-child {
+    // Inserted by magic-line plugin of CKEditor
+    padding: 0;
+  }
+  .appendHint:after {
+    content: attr(data-append-hint);
+    display: inline-block;
+    font-size: 0.75em;
+    bottom: -3px;
+    position: relative;
+  }
+
+  .collidingParagraph.hovered {
+    background-color: #eee;
+  }
+
+  > ul, ol {
+    padding-left: $fixedWidthTextListPadding + $fixedWidthTextStdPadding - 40;
+  }
+  > blockquote {
+    @include motionParagraphBlockquote;
+    margin-left: $fixedWidthTextQuoteMargin + $fixedWidthTextStdPadding - 40;
+  }
+  span.underline {
+    border-bottom: solid 1px black;
+  }
+  span.strike {
+    text-decoration: line-through;
+  }
+  span.subscript {
+    // @TODO
+  }
+  span.superscript {
+    // @TODO
+  }
+}
 
 #mainmenu {
   .nav > li {
@@ -14,15 +122,6 @@
     .navbar .nav li a {
       margin-left: 20px;
     }
-  }
-}
-
-.sidebarSmall.navbar {
-  .nav li {
-    padding: 4px;
-  }
-  .nav li a {
-    margin-left: 20px;
   }
 }
 
@@ -56,6 +155,10 @@
     > tbody > tr > th {
       width: 30%;
     }
+
+    .mergingDraft > * {
+      padding-top: 15px;
+    }
   }
   .tagAdderHolder:link, .tagAdderHolder:visited {
     color: green;
@@ -78,6 +181,10 @@
       font-weight: bold;
     }
   }
+  .contactShow {
+    font-size: 0.8em;
+    margin-left: 15px;
+  }
 }
 
 .wysiwyg-textarea {
@@ -96,185 +203,28 @@
   border: none !important;
 }
 
-#sidebar {
-  .nav-list {
-    padding: 0;
-    margin-bottom: 20px;
-
-    > li {
-      padding: 0 10px 10px 38px;
-      a {
-        color: $colorLinks;
-        padding: 0;
-        background: none;
-        filter: none;
-        margin: 0;
-        text-shadow: none;
-        display: inline;
-
-        &:link, &:visited {
-          color: $colorLinks;
-        }
-
-        .glyphicon {
-          position: absolute;
-          left: -25px;
-        }
-      }
-      &.nav-header {
-        padding: 5px 0 5px 15px;
-      }
-      &.notifications {
-        a span {
-          font-size: 18px;
-        }
-      }
-    }
-
-    .nav-header {
-      margin-bottom: 12px;
-    }
-  }
-
-  .antragsgruenAd {
-    margin-top: 30px;
-    .content > div {
-      text-align: center;
-      margin-top: 15px;
-    }
-  }
-
-  $createMotionButtonOffset: 10px;
-
-  html.no-csstransforms & .createMotion, html.no-borderradius & .createMotion {
-    @extend .text-hide;
-    position: absolute;
-    top: 6px - $createMotionButtonOffset;
-    right: -58px;
-    display: block;
-    width: 58px;
-    height: 276px;
-    background-image: url(../img/neuer-antrag.png);
-  }
-
-  html.csstransforms.borderradius & {
-    .createMotionHolder1 {
-      position: absolute;
-      top: 10px - $createMotionButtonOffset;
-      right: -1px;
-    }
-    .createMotionHolder2 {
-      position: absolute;
-      left: 0;
-      top: 0;
-      -moz-transform: rotate(270deg) translateX(-100%);
-      -webkit-transform: rotate(270deg) translateX(-100%);
-      -o-transform: rotate(270deg) translateX(-100%);
-      -ms-transform: rotate(270deg) translateX(-100%);
-      transform: rotate(270deg) translateX(-100%);
-
-      -moz-transform-origin: 0% 0%;
-      -ms-transform-origin: 0% 0%;
-      -o-transform-origin: 0% 0%;
-      -webkit-transform-origin: 0% 0%;
-      transform-origin: 0% 0%;
-
-      display: inline-block;
-      overflow: hidden;
-      padding: 0 10px 10px;
-    }
-    .createMotion {
-      background: $createMotionBtnColor; /* Old browsers */
-      background: -moz-linear-gradient(top, $createMotionBtnColor 0%, lighten($createMotionBtnColor, 2.3%) 100%); /* FF3.6+ */
-      background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, $createMotionBtnColor), color-stop(100%, lighten($createMotionBtnColor, 2.3%))); /* Chrome,Safari4+ */
-      background: -webkit-linear-gradient(top, $createMotionBtnColor 0%, lighten($createMotionBtnColor, 2.3%) 100%); /* Chrome10+,Safari5.1+ */
-      background: -o-linear-gradient(top, $createMotionBtnColor 0%, lighten($createMotionBtnColor, 2.3%) 100%); /* Opera 11.10+ */
-      background: -ms-linear-gradient(top, $createMotionBtnColor 0%, lighten($createMotionBtnColor, 2.3%) 100%); /* IE10+ */
-      background: linear-gradient(to bottom, $createMotionBtnColor 0%, lighten($createMotionBtnColor, 2.3%) 100%); /* W3C */
-      padding: 10px 30px;
-      color: white;
-      text-decoration: none;
-      font-family: $headingFont;
-      font-weight: bold;
-      font-size: 14px;
-      -webkit-border-radius: 0 0 10px 10px;
-      border-radius: 0 0 10px 10px;
-      border: solid 1px lighten($createMotionBtnColor, 1.8%);
-
-      text-transform: uppercase;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-
-      -webkit-box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-      -moz-box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-
-      display: inline-block;
-      white-space: nowrap;
-
-      > span {
-        padding-right: 10px;
-        font-size: 15px;
-      }
-    }
-  }
-
-  .search-query {
-    width: 140px;
-  }
-}
-
-ul.sidebarActions {
-  @include linear-gradient(90deg, lighten($sidebarBackground, 2.3%), $sidebarBackground);
-  padding: 7px 0 1px 21px;
-  list-style-type: none;
-  margin: -1px; // prevents white border
-  position: relative;
-  @include border-radius(10px);
-  -webkit-box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-  -moz-box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-
-  font-family: $sidebarActionFont;
-  font-style: normal;
-  font-weight: bold;
-
-  li a, li > span, form {
-    display: block;
-    text-transform: uppercase;
-    font-size: 14px;
-    line-height: 18px;
-    color: #fff;
-    padding-bottom: 10px;
-    text-indent: -12px;
-    margin: 7px 0 7px 15px;
-  }
-
-  li a:hover {
-    color: rgb(246, 224, 235);
-  }
-
-  .icon {
-    color: #fff;
-    margin-right: 10px;
-  }
-  button {
-    text-transform: uppercase;
-    font-size: 14px;
-    line-height: 18px;
-    color: #fff;
-    text-indent: -9px;
-    text-align: left;
-  }
-}
-
-#loginWurzelwerkHint {
+#loginWurzelwerkHint, #loginSamlHint, .login_saml .privacyHint {
   border-left: solid 1px #808080;
   padding-left: 10px;
   margin-left: 20px;
   margin-top: 10px;
   font-size: 0.8em;
   overflow: auto;
+}
+
+.login_saml {
+  .privacyHint {
+    border-left: solid 1px #808080;
+    padding-left: 10px;
+    margin-left: 20px;
+    margin-top: 0;
+    font-size: 0.8em;
+    overflow: auto;
+  }
+  .btn {
+    float: left;
+    margin-right: 30px;
+  }
 }
 
 #loginWurzelwerkForgot {
@@ -310,15 +260,32 @@ ul.sidebarActions {
   .submitHolder {
     text-align: right;
   }
-  .editorialChange {
-    overflow: auto;
-    .opener {
-      float: right;
+  .editorialGlobalBar {
+    background-color: #f7f7f7;
+    border-bottom: solid 1px #ccc;
+    padding: 0 20px;
+    font-size: 13px;
+
+    label {
+      display: inline-block;
+      width: 50%;
+      padding: 5px 0;
+      margin: 0;
+      font-weight: normal;
+      color: #777;
+      &:last-child {
+        text-align: right;
+      }
     }
+    input {
+      margin-right: 5px;
+    }
+  }
+  .modifiedActions {
+    text-align: right;
   }
   .single-paragraph {
     .modifiedActions {
-      text-align: right;
       display: none;
     }
     &.modified {
@@ -331,6 +298,9 @@ ul.sidebarActions {
       cursor: pointer;
       &:hover {
         background-color: #f4f4f4;
+        > .texteditor {
+          background-color: transparent;
+        }
       }
     }
   }
@@ -349,8 +319,26 @@ ul.sidebarActions {
   }
 
   .initiatorData {
-    .contactPrivacy {
-      font-size: 0.8em;
+    .contact-head {
+      margin-top: 20px;
+      margin-bottom: 10px;
+      h3 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .hint {
+        font-size: 12px;
+      }
+    }
+
+    .only-person, .only-organization {
+      display: none;
+    }
+    &.type-person .only-person {
+      display: inherit;
+    }
+    &.type-organization .only-organization {
+      display: inherit;
     }
   }
 
@@ -370,6 +358,22 @@ ul.sidebarActions {
 }
 
 #motionConfirmedForm {
+  .promoUrl {
+    input[type=text] {
+      font-weight: bold;
+      font-family: $motionFixedFont;
+    }
+    .clipboard-done {
+      text-align: center;
+      font-size: 0.8em;
+      color: green;
+      font-weight: normal;
+      margin-top: -13px;
+    }
+    button.btn {
+      padding-bottom: 7px;
+    }
+  }
   .btnRow {
     padding: 15px;
     text-align: center;
@@ -378,6 +382,124 @@ ul.sidebarActions {
 
 #motionConfirmForm, #amendmentConfirmForm {
   margin-bottom: 20px;
+}
+
+.motionMergeInit {
+  h2.green {
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+  .explanation {
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+  .alert-info {
+    a.btn {
+      margin-top: -7px;
+    }
+  }
+  .draftExistsAlert {
+    margin-bottom: 50px;
+  }
+  .mergeAllRow {
+    h3 {
+      font-size: 16px;
+    }
+    ul {
+      list-style-type: none;
+      margin: 0 0 0 40px;
+      padding: 0;
+    }
+    label {
+      font-weight: normal;
+    }
+  }
+  .mergeSingle {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    > li {
+      clear: both;
+      margin: 15px 0;
+      padding: 0;
+      .title {
+        font-weight: bold;
+      }
+      .initiator {
+        font-size: 0.8em;
+        color: gray;
+      }
+    }
+    .amendmentAjaxTooltip {
+      float: left;
+      margin-right: 10px;
+    }
+  }
+}
+
+.motionMergeStyles {
+  .ICE-Tracking .ice-del, .ICE-Tracking .ice-del p {
+    text-decoration: line-through;
+    color: #880000;
+    background-color: rgba(255, 100, 100, 0.2);
+  }
+  .ICE-Tracking .ice-del.hover, .ICE-Tracking .ice-del.hover p {
+    background-color: darken(rgba(255, 100, 100, 0.5), 10%);
+  }
+  .ICE-Tracking .ice-ins, .ICE-Tracking .ice-ins p {
+    text-decoration: underline;
+    color: #008800;
+    background-color: rgba(100, 255, 100, 0.2);
+  }
+  .ICE-Tracking .ice-ins.hover, .ICE-Tracking .ice-ins.hover p {
+    background-color: darken(rgba(100, 255, 100, 0.6), 10%);
+  }
+  .paragraphHolder.hasCollissions {
+    background-color: #fff5f5;
+    margin-top: 15px;
+    margin-bottom: 15px;
+    border-top: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+    position: relative;
+    &:before {
+      content: attr(data-collission-start-msg);
+      position: absolute;
+      top: -13px;
+      text-align: center;
+      font-size: 0.7em;
+      color: gray;
+      width: 100%;
+    }
+    &:after {
+      content: attr(data-collission-end-msg);
+      position: absolute;
+      bottom: -13px;
+      text-align: center;
+      font-size: 0.7em;
+      color: gray;
+      width: 100%;
+    }
+     + .hasCollissions {
+       margin-top: 45px;
+     }
+  }
+  .moved {
+    margin-top: 15px;
+    position: relative;
+    &:before {
+      display: block;
+      content: attr(data-moving-msg);
+      // Absolute positioning is necessary, otherwise we can't cancel the text-decoration propert
+      position: absolute;
+      top: -15px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      text-decoration: none;
+      font-size: 0.8em;
+      color: gray;
+    }
+  }
 }
 
 .motionMergeForm {
@@ -394,15 +516,144 @@ ul.sidebarActions {
       padding-top: 0;
     }
   }
-  .ICE-Tracking .ice-del, .ICE-Tracking .ice-del p {
-    text-decoration: line-through;
-    color: #880000;
-    background-color: rgba(255, 100, 100, 0.2);
+
+  .editorialAmendments {
+    h3 {
+      font-size: 1em;
+      font-weight: bold;
+    }
+    .content {
+      border-bottom: solid 1px $headingSecondaryBackground;
+      &:first-child {
+        border-bottom: none;
+      }
+    }
   }
-  .ICE-Tracking .ice-ins, .ICE-Tracking .ice-ins p {
-    text-decoration: underline;
-    color: #008800;
-    background-color: rgba(100, 255, 100, 0.2);
+  #draftSavingPanel {
+    position: fixed;
+    bottom: 0;
+    right: 30px;
+    width: 250px;
+    z-index: 10;
+    padding: 0;
+    background: white;
+    border: solid 1px #ccc;
+    border-top-right-radius: 3px;
+    border-top-left-radius: 3px;
+    border-bottom: none;
+    -webkit-box-shadow: 0 0 3px rgba(0, 0, 0, 0.4);
+    -moz-box-shadow: 0 0 3px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.4);
+
+    label {
+      font-weight: normal;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 16px;
+      padding: 5px;
+      background-color: #eee;
+    }
+    .public {
+      padding: 5px;
+    }
+    .autosave {
+      padding: 5px;
+    }
+    .publicLink {
+      float: right;
+      margin-right: 5px;
+    }
+    .savingError {
+      padding: 5px;
+      margin-top: -5px;
+      border-bottom: solid 1px #ccc;
+      background-color: #ff4444;
+      color: black;
+    }
+    .save {
+      padding: 5px;
+      overflow: auto;
+      .lastSaved {
+        float: left;
+      }
+      .saveDraft {
+        float: right;
+      }
+      .none {
+        font-size: 0.9em;
+        color: gray;
+        font-style: italic;
+      }
+    }
+    @media screen and (min-width: 1101px) {
+      h2 {
+        border-bottom: solid 1px #ccc;
+      }
+      .save {
+        padding: 0 5px 5px 5px;
+      }
+      .public {
+        display: block;
+        padding-bottom: 0;
+      }
+      .autosave {
+        border-bottom: solid 1px #ccc;
+        display: block;
+        padding-top: 0;
+      }
+      .lastSaved {
+        margin-top: 2px;
+      }
+    }
+    @media screen and (max-width: 1100px) {
+      right: 0;
+      left: 0;
+      width: 100%;
+      display: table;
+      .hideSmall {
+        display: none;
+      }
+      > * {
+        display: table-cell;
+        vertical-align: middle;
+        line-height: 25px;
+      }
+      > h2 {
+        width: 20%;
+        border-right: solid 1px #ccc;
+      }
+      > .public {
+        width: 20%;
+        border-right: solid 1px #ccc;
+      }
+      .autosave {
+        width: 20%;
+        border-right: solid 1px #ccc;
+      }
+      > .save {
+        width: 40%;
+      }
+    }
+  }
+}
+
+.motionUpdateWidget {
+  text-align: right;
+  padding-top: 10px;
+
+  .updated {
+    text-align: center;
+    padding-top: 5px;
+    font-size: 0.8em;
+    color: green;
+    opacity: 0;
+    transition: opacity 0.1s;
+    &.active {
+      opacity: 1;
+      transition: opacity 0.1s;
+    }
   }
 }
 
@@ -506,6 +757,21 @@ ul.searchResults {
   }
 }
 
+.activityLogPage {
+  .date {
+    float: right;
+    color: gray;
+  }
+  .description {
+    margin-top: 10px;
+  }
+  .deleted {
+    color: gray;
+    //font-weight: normal;
+    font-style: italic;
+  }
+}
+
 @font-face {
   font-family: FontAwesome;
   src: url(../fonts/fontawesome-webfont.eot);
@@ -514,29 +780,51 @@ ul.searchResults {
   font-style: normal
 }
 
-@media only screen and (min-width: 640px) {
-  .shariff .orientation-horizontal.col-2 li {
-    max-width: 204px !important;
-  }
-}
-
-.shariff {
-  .theme-white .twitter a, .theme-white .twitter a:link, .theme-white .twitter a:visited {
-    color: #247bbd;
-  }
-  .theme-white .facebook a, .theme-white .facebook a:link, .theme-white .facebook a:visited {
-    color: #247bbd;
-  }
-}
-
 .fuelux {
   .pillbox > .pill-group {
     list-style-type: none;
   }
-  .form-group .dropdown-menu {
-    margin-left: 15px;
-  }
-  .selectlist .btn.dropdown-toggle {
+  .selectlist {
     position: relative;
+    .btn.dropdown-toggle {
+      position: relative;
+    }
+  }
+}
+
+h2.green .amendmentAjaxTooltip, h3.green .amendmentAjaxTooltip {
+  float: right;
+  color: gray;
+  margin-right: -10px;
+}
+
+.popover-amendment-ajax {
+  width: 250px;
+  max-width: none;
+  color: black;
+
+  @media screen and (min-width: 800px) {
+    width: 400px;
+  }
+  @media screen and (min-width: 1200px) {
+    width: 600px;
+  }
+  .popover-content {
+    padding-right: 0;
+  }
+}
+
+.ajaxAmendment {
+  max-height: 250px;
+  overflow: auto;
+  > h3 {
+    display: none;
+  }
+  h4 {
+    font-size: 16px;
+    margin: 5px 0;
+  }
+  ul {
+    padding-left: 20px;
   }
 }

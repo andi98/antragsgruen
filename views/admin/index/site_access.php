@@ -8,6 +8,7 @@ use app\models\settings\Site as SiteSettings;
 /**
  * @var yii\web\View $this
  * @var \app\models\db\Site $site
+ * @var array $admins
  * @var bool $policyWarning
  */
 
@@ -17,10 +18,10 @@ $layout     = $controller->layoutParams;
 
 $this->title = \Yii::t('admin', 'siteacc_title');
 $layout->addCSS('css/backend.css');
-$layout->addJS('js/backend.js');
-$layout->addBreadcrumb('Administration', UrlHelper::createUrl('admin/index'));
+$layout->addBreadcrumb(\Yii::t('admin', 'bread_settings'), UrlHelper::createUrl('admin/index'));
 $layout->addBreadcrumb(\Yii::t('admin', 'siteacc_bread'));
 $layout->loadFuelux();
+$layout->addAMDModule('backend/SiteAccess');
 
 $settings = $site->getSettings();
 
@@ -71,7 +72,7 @@ if (User::getCurrentUser()->getAuthType() == SiteSettings::LOGIN_STD) {
 echo ' ' . \Yii::t('admin', 'siteacc_useraccounts') . '</label>
 </div>';
 
-if ($controller->getParams()->hasWurzelwerk) {
+if ($controller->getParams()->hasWurzelwerk || $controller->getParams()->isSamlActive()) {
     $method = SiteSettings::LOGIN_WURZELWERK;
     echo '<div class="checkbox wurzelwerk">
   <label>' . Html::checkbox('login[]', in_array($method, $settings->loginMethods), ['value' => $method]) .
@@ -100,55 +101,7 @@ echo Html::endForm();
 
 if ($controller->consultation) {
     $consultation = $controller->consultation;
-    include('site_access_accounts.php');
+    include('_site_access_accounts.php');
+
+    include('_site_access_admins.php');
 }
-
-
-echo Html::beginForm('', 'post', ['id' => 'adminForm', 'class' => 'adminForm form-horizontal']);
-echo '<h2 class="green">' . \Yii::t('admin', 'siteacc_admins_title') . '</h2>
-    <section class="content">
-    <ul style="margin-top: 10px;">';
-
-$myself = User::getCurrentUser();
-foreach ($site->admins as $admin) {
-    echo '<li class="admin' . $admin->id . '">';
-    echo Html::encode($admin->getAuthName());
-    if ($admin->name != '') {
-        echo ' (' . Html::encode($admin->name) . ')';
-    }
-    if ($admin->id != $myself->id) {
-        echo '<button class="link removeAdmin" type="button" data-id="' . $admin->id . '">';
-        echo '<span class="glyphicon glyphicon-trash"></span>';
-        echo '</button>';
-    }
-    echo "</li>";
-}
-echo '</ul>
-
-<br>
-
-<h4>' . \Yii::t('admin', 'siteacc_admins_add') . '</h4>
-<div class="row">
-    <div class="col-md-3">';
-
-$options = [
-    'wurzelwerk' => \Yii::t('admin', 'siteacc_add_ww') . ':',
-    'email'      => \Yii::t('admin', 'siteacc_add_email') . ':',
-];
-echo \app\components\HTMLTools::fueluxSelectbox('addType', $options);
-echo '</div>
-<div class="col-md-4">
-    <input type="text" name="addUsername" value="" id="addUsername" class="form-control"
-    title="' . Html::encode(\Yii::t('admin', 'siteacc_add_name_title')) . '"
-    placeholder="' . Html::encode(\Yii::t('admin', 'siteacc_add_name_place')) . '" required>
-</div>
-<div class="col-md-3">
-    <button type="submit" name="addAdmin" class="btn btn-primary">' . \Yii::t('admin', 'siteacc_add_btn') . '</button>
-</div>
-</div>
-<br><br>
-</section>';
-echo Html::endForm();
-
-
-$layout->addOnLoadJS('$.AntragsgruenAdmin.siteAccessInit();');

@@ -15,6 +15,7 @@ use yii\helpers\Html;
  * @property string $name
  * @property string $organization
  * @property string $resolutionDate
+ * @property string $contactName
  * @property string $contactEmail
  * @property string $contactPhone
  *
@@ -64,6 +65,15 @@ abstract class ISupporter extends ActiveRecord
     }
 
     /**
+     * @return boolean
+     */
+    public function isDataFixed()
+    {
+        $user = $this->user;
+        return ($user && $user->fixedData == 1);
+    }
+
+    /**
      * @return string
      */
     public function getNameWithOrga()
@@ -104,7 +114,8 @@ abstract class ISupporter extends ActiveRecord
             } else {
                 if ($this->resolutionDate > 0) {
                     $orga .= ' <small style="font-weight: normal;">(';
-                    $orga .= \Yii::t('motion', 'resolution_on') . ': ' . Tools::formatMysqlDate($this->resolutionDate);
+                    $orga .= \Yii::t('motion', 'resolution_on') . ': ';
+                    $orga .= Tools::formatMysqlDate($this->resolutionDate, null, false);
                     $orga .= ')</small>';
                 }
                 return $orga;
@@ -123,10 +134,26 @@ abstract class ISupporter extends ActiveRecord
             } else {
                 if ($this->resolutionDate > 0) {
                     $orga .= ' (' . \Yii::t('motion', 'resolution_on') . ': ';
-                    $orga .= Tools::formatMysqlDate($this->resolutionDate) . ')';
+                    $orga .= Tools::formatMysqlDate($this->resolutionDate, null, false) . ')';
                 }
                 return $orga;
             }
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getGivenNameOrFull()
+    {
+        if ($this->user && $this->personType == static::PERSON_NATURAL) {
+            if ($this->user->nameGiven) {
+                return $this->user->nameGiven;
+            } else {
+                return $this->name;
+            }
+        } else {
+            return $this->name;
         }
     }
 }

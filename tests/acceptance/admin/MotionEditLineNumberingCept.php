@@ -9,7 +9,7 @@ $I->populateDBData1();
 $I->wantTo('create a new motion');
 
 $page = $I->gotoConsultationHome()->gotoMotionCreatePage();
-$page->createMotion('random new motion');
+$page->createMotion('random new motion', false);
 
 $motionPage = $I->gotoMotion(true, $motionId);
 $I->see(mb_strtoupper('random new motion'), 'h1');
@@ -39,8 +39,8 @@ $motionPage = $I->gotoMotion(true, $motionId);
 $I->see(mb_strtoupper('random new motion'), 'h1');
 
 $firstLineNo = $motionPage->getFirstLineNumber();
-if ($firstLineNo != 96) {
-    $I->fail('first line number is 96 - got: ' . $firstLineNo);
+if ($firstLineNo != 163) {
+    $I->fail('first line number is 163 - got: ' . $firstLineNo);
 }
 
 
@@ -48,7 +48,7 @@ if ($firstLineNo != 96) {
 
 $I->wantTo('set an invalid title prefix');
 
-$motionAdminPage = $I->gotoStdAdminPage()->gotoMotionList()->gotoMotionEdit($motionId);
+$motionAdminPage = $I->gotoMotionList()->gotoMotionEdit($motionId);
 $I->fillField('#motionTitlePrefix', 'A2');
 $I->fillField('#motionTitle', 'Another Title');
 $motionAdminPage->saveForm();

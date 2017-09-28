@@ -4,7 +4,7 @@
 
 namespace app\tests\_pages;
 
-use yii\codeception\BasePage;
+use Helper\BasePage;
 
 /**
  * Represents contact page
@@ -25,18 +25,6 @@ class AdminIndexPage extends BasePage
         return new AdminMotionTypePage($this->actor);
     }
 
-
-    /**
-     * @TODO Delete MotionIndex page?
-     * @return AdminMotionIndexPage
-     */
-    public function gotoMotionIndex()
-    {
-        $this->actor->click('.motionIndex');
-        $this->actor->see(mb_strtoupper('Anträge'), 'h1');
-        return new AdminMotionIndexPage($this->actor);
-    }
-
     /**
      * @return AdminConsultationPage
      */
@@ -47,20 +35,12 @@ class AdminIndexPage extends BasePage
     }
 
     /**
-     * @return AdminMotionListPage
-     */
-    public function gotoMotionList()
-    {
-        $this->actor->click('.motionListAll');
-        $this->actor->see(mb_strtoupper('Liste: Anträge, Änderungsanträge'), 'h1');
-        return new AdminMotionListPage($this->actor);
-    }
-
-    /**
+     * @return AdminSiteAccessPage
      */
     public function gotoSiteAccessPage()
     {
         $this->actor->click('.siteAccessLink');
+        return new AdminSiteAccessPage($this->actor);
     }
 
     /**

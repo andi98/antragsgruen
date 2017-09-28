@@ -2,6 +2,8 @@
 
 namespace app\controllers;
 
+use app\components\AntiSpam;
+use app\components\EmailNotifications;
 use app\components\UrlHelper;
 use app\models\db\Amendment;
 use app\models\db\AmendmentComment;
@@ -15,6 +17,7 @@ use app\models\exceptions\DB;
 use app\models\exceptions\FormError;
 use app\models\exceptions\Internal;
 use app\models\forms\CommentForm;
+use app\models\supportTypes\ISupportType;
 
 /**
  * @property Consultation $consultation
@@ -48,7 +51,6 @@ trait AmendmentActionsTrait
     /**
      * @param Amendment $amendment
      * @param array $viewParameters
-     * @return AmendmentComment
      * @throws Access
      */
     private function writeComment(Amendment $amendment, &$viewParameters)
@@ -56,16 +58,22 @@ trait AmendmentActionsTrait
         if (!$amendment->getMyMotion()->motionType->getCommentPolicy()->checkCurrUser()) {
             throw new Access('No rights to write a comment');
         }
+
+        $consultation = $amendment->getMyConsultation();
+        if (\Yii::$app->user->isGuest) {
+            if (AntiSpam::createToken($consultation->id) != \Yii::$app->request->post('jsprotection')) {
+                throw new Access(\Yii::t('base', 'err_js_or_login'));
+            }
+        }
         $commentForm = new CommentForm();
-        $commentForm->setAttributes($_POST['comment']);
+        $commentForm->setAttributes(\Yii::$app->request->getBodyParam('comment'));
 
         if (User::getCurrentUser()) {
             $commentForm->userId = User::getCurrentUser()->id;
         }
 
         try {
-            $comment      = $commentForm->saveAmendmentComment($amendment);
-            $consultation = $amendment->getMyConsultation();
+            $comment = $commentForm->saveAmendmentComment($amendment);
             ConsultationLog::logCurrUser($consultation, ConsultationLog::AMENDMENT_COMMENT, $comment->id);
             $this->redirect(UrlHelper::createAmendmentCommentUrl($comment));
         } catch (\Exception $e) {
@@ -156,28 +164,63 @@ trait AmendmentActionsTrait
 
     /**
      * @param Amendment $amendment
-     * @param string $role
-     * @param string $string
      * @throws FormError
      */
-    private function amendmentLikeDislike(Amendment $amendment, $role, $string)
+    private function amendmentSupport(Amendment $amendment)
     {
-        $currentUser = User::getCurrentUser();
-        if (!$amendment->getMyMotion()->motionType->getSupportPolicy()->checkCurrUser() || $currentUser == null) {
-            throw new FormError('Supporting this motion is not possible');
+        if (!$amendment->isSupportingPossibleAtThisStatus()) {
+            throw new FormError('Not possible given the current amendment status');
         }
-
-        foreach ($amendment->amendmentSupporters as $supp) {
-            if ($supp->userId == $currentUser->id) {
-                $amendment->unlink('amendmentSupporters', $supp, true);
+        foreach ($amendment->getSupporters() as $supporter) {
+            if (User::getCurrentUser() && $supporter->userId == User::getCurrentUser()->id) {
+                \Yii::$app->session->setFlash('success', \Yii::t('amend', 'support_already'));
+                return;
             }
         }
-        $support              = new AmendmentSupporter();
-        $support->amendmentId = $amendment->id;
-        $support->userId      = $currentUser->id;
-        $support->position    = 0;
-        $support->role        = $role;
-        $support->save();
+        $supportClass = $amendment->getMyMotion()->motionType->getAmendmentSupportTypeClass();
+        $role         = AmendmentSupporter::ROLE_SUPPORTER;
+        $user         = User::getCurrentUser();
+        if ($user && $user->fixedData) {
+            $name = $user->name;
+            $orga = $user->organization;
+        } else {
+            $name = \Yii::$app->request->post('motionSupportName', '');
+            $orga = \Yii::$app->request->post('motionSupportOrga', '');
+        }
+        if ($supportClass->hasOrganizations() && $orga == '') {
+            \Yii::$app->session->setFlash('error', 'No organization entered');
+            return;
+        }
+        if (trim($name) == '') {
+            \Yii::$app->session->setFlash('error', 'You need to enter a name');
+            return;
+        }
+
+        $this->amendmentLikeDislike($amendment, $role, \Yii::t('amend', 'support_done'), $name, $orga);
+        ConsultationLog::logCurrUser($amendment->getMyConsultation(), ConsultationLog::MOTION_SUPPORT, $amendment->id);
+
+        $minSupporters = $supportClass->getMinNumberOfSupporters();
+        if (count($amendment->getSupporters()) == $minSupporters) {
+            EmailNotifications::sendAmendmentSupporterMinimumReached($amendment);
+        }
+    }
+
+    /**
+     * @param Amendment $amendment
+     * @param string $role
+     * @param string $string
+     * @param string $name
+     * @param string $orga
+     * @throws FormError
+     */
+    private function amendmentLikeDislike(Amendment $amendment, $role, $string, $name = '', $orga = '')
+    {
+        $currentUser = User::getCurrentUser();
+        if (!$amendment->getMyMotion()->motionType->getAmendmentSupportPolicy()->checkCurrUser()) {
+            throw new FormError('Supporting this amendment is not possible');
+        }
+
+        AmendmentSupporter::createSupport($amendment, $currentUser, $name, $orga, $role);
 
         $amendment->refresh();
 
@@ -190,17 +233,24 @@ trait AmendmentActionsTrait
      */
     private function amendmentLike(Amendment $amendment)
     {
-        $msg = 'Du stimmst diesem Änderungsantrag nun zu.';
+        if (!($amendment->getLikeDislikeSettings() & ISupportType::LIKEDISLIKE_LIKE)) {
+            throw new FormError('Not supported');
+        }
+        $msg = \Yii::t('amend', 'like_done');
         $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_LIKE, $msg);
         ConsultationLog::logCurrUser($amendment->getMyConsultation(), ConsultationLog::AMENDMENT_LIKE, $amendment->id);
     }
 
     /**
      * @param Amendment $amendment
+     * @throws FormError
      */
     private function amendmentDislike(Amendment $amendment)
     {
-        $msg          = 'Du lehnst diesen Änderungsantrag nun ab.';
+        if (!($amendment->getLikeDislikeSettings() & ISupportType::LIKEDISLIKE_DISLIKE)) {
+            throw new FormError('Not supported');
+        }
+        $msg          = \Yii::t('amend', 'dislike_done');
         $consultation = $amendment->getMyConsultation();
         $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_DISLIKE, $msg);
         ConsultationLog::logCurrUser($consultation, ConsultationLog::AMENDMENT_DISLIKE, $amendment->id);
@@ -208,18 +258,48 @@ trait AmendmentActionsTrait
 
     /**
      * @param Amendment $amendment
+     * @throws FormError
      */
     private function amendmentSupportRevoke(Amendment $amendment)
     {
-        $currentUser = User::getCurrentUser();
+        $currentUser          = User::getCurrentUser();
+        $anonymouslySupported = AmendmentSupporter::getMyAnonymousSupportIds();
         foreach ($amendment->amendmentSupporters as $supp) {
-            if ($supp->userId == $currentUser->id) {
+            if (($currentUser && $supp->userId == $currentUser->id) || in_array($supp->id, $anonymouslySupported)) {
+                if ($supp->role == AmendmentSupporter::ROLE_SUPPORTER) {
+                    if (!$amendment->isSupportingPossibleAtThisStatus()) {
+                        throw new FormError('Not possible given the current amendment status');
+                    }
+                }
                 $amendment->unlink('amendmentSupporters', $supp, true);
             }
         }
         $consultation = $amendment->getMyConsultation();
         ConsultationLog::logCurrUser($consultation, ConsultationLog::AMENDMENT_UNLIKE, $amendment->id);
-        \Yii::$app->session->setFlash('success', 'Du stehst diesem Änderungsantrag wieder neutral gegenüber.');
+        \Yii::$app->session->setFlash('success', \Yii::t('amend', 'neutral_done'));
+    }
+
+    /**
+     * @param Amendment $amendment
+     */
+    private function amendmentSupportFinish(Amendment $amendment)
+    {
+        if (!$amendment->canFinishSupportCollection()) {
+            \Yii::$app->session->setFlash('error', \Yii::t('amend', 'support_finish_err'));
+            return;
+        }
+
+        $amendment->setInitialSubmitted();
+
+        if ($amendment->status == Amendment::STATUS_SUBMITTED_SCREENED) {
+            $amendment->onPublish();
+        } else {
+            EmailNotifications::sendAmendmentSubmissionConfirm($amendment);
+        }
+
+        $consultation = $amendment->getMyConsultation();
+        ConsultationLog::logCurrUser($consultation, ConsultationLog::MOTION_SUPPORT_FINISH, $amendment->id);
+        \Yii::$app->session->setFlash('success', \Yii::t('amend', 'support_finish_done'));
     }
 
     /**
@@ -229,27 +309,34 @@ trait AmendmentActionsTrait
      */
     private function performShowActions(Amendment $amendment, $commentId, &$viewParameters)
     {
-        if ($commentId == 0 && isset($_POST['commentId'])) {
-            $commentId = IntVal($_POST['commentId']);
+        $post = \Yii::$app->request->post();
+        if ($commentId == 0 && isset($post['commentId'])) {
+            $commentId = IntVal($post['commentId']);
         }
-        if (isset($_POST['deleteComment'])) {
+        if (isset($post['deleteComment'])) {
             $this->deleteComment($amendment, $commentId);
-        } elseif (isset($_POST['commentScreeningAccept'])) {
+        } elseif (isset($post['commentScreeningAccept'])) {
             $this->screenCommentAccept($amendment, $commentId);
 
-        } elseif (isset($_POST['commentScreeningReject'])) {
+        } elseif (isset($post['commentScreeningReject'])) {
             $this->screenCommentReject($amendment, $commentId);
 
-        } elseif (isset($_POST['motionLike'])) {
+        } elseif (isset($post['motionLike'])) {
             $this->amendmentLike($amendment);
 
-        } elseif (isset($_POST['motionDislike'])) {
+        } elseif (isset($post['motionDislike'])) {
             $this->amendmentDislike($amendment);
 
-        } elseif (isset($_POST['motionSupportRevoke'])) {
+        } elseif (isset($post['motionSupport'])) {
+            $this->amendmentSupport($amendment);
+
+        } elseif (isset($post['motionSupportRevoke'])) {
             $this->amendmentSupportRevoke($amendment);
 
-        } elseif (isset($_POST['writeComment'])) {
+        } elseif (isset($post['amendmentSupportFinish'])) {
+            $this->amendmentSupportFinish($amendment);
+
+        } elseif (isset($post['writeComment'])) {
             $this->writeComment($amendment, $viewParameters);
         }
     }

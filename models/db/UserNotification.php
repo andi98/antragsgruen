@@ -19,16 +19,19 @@ use yii\db\ActiveRecord;
  */
 class UserNotification extends ActiveRecord
 {
-    const NOTIFICATION_NEW_MOTION    = 0;
-    const NOTIFICATION_NEW_AMENDMENT = 1;
-    const NOTIFICATION_NEW_COMMENT   = 2;
+    const NOTIFICATION_NEW_MOTION          = 0;
+    const NOTIFICATION_NEW_AMENDMENT       = 1;
+    const NOTIFICATION_NEW_COMMENT         = 2;
+    const NOTIFICATION_AMENDMENT_MY_MOTION = 3;
 
     /**
      * @return string
      */
     public static function tableName()
     {
-        return 'userNotification';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'userNotification';
     }
 
     /**
@@ -57,6 +60,26 @@ class UserNotification extends ActiveRecord
             [['userId', 'consultationId', 'notificationType'], 'required'],
             [['id', 'userId', 'consultationId', 'notificationType', 'notificationReferenceId'], 'number'],
         ];
+    }
+
+    /**
+     * @param Consultation $consultation
+     * @param null|int $notiType
+     * @return UserNotification[]
+     */
+    public static function getConsultationNotifications(Consultation $consultation, $notiType = null)
+    {
+        if ($notiType) {
+            $notifications = [];
+            foreach ($consultation->userNotifications as $userNotification) {
+                if ($userNotification->notificationType == $notiType) {
+                    $notifications[] = $userNotification;
+                }
+            }
+            return $notifications;
+        } else {
+            return $consultation->userNotifications;
+        }
     }
 
     /**

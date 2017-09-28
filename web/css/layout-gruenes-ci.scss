@@ -1,5 +1,7 @@
 @charset "UTF-8";
 
+@import "variables";
+
 $arvoFontPath: "../fonts/gruenes-ci/";
 @import "../fonts/gruenes-ci/arvo";
 $ptSansFontPath: "../fonts/gruenes-ci/";
@@ -46,10 +48,12 @@ $inlineAmendmentPreambleHeight: 35px;
 $inlineAmendmentPreambleColor: $colorMagenta;
 $createMotionBtnColor: $colorMagenta;
 
+@import "bootstrap";
+@import "fontello";
 @import "base_layout";
 @import "motions";
 @import "styles";
-
+@import "sidebar";
 
 html {
   background: url("../img/wallpaper.jpg") repeat scroll 0 0 transparent;

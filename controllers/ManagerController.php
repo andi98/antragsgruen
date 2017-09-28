@@ -2,31 +2,39 @@
 
 namespace app\controllers;
 
-use app\components\AntiXSS;
+use app\components\HTMLTools;
 use app\components\MessageSource;
+use app\components\Tools;
 use app\components\UrlHelper;
 use app\models\db\Site;
 use app\models\db\User;
 use app\models\exceptions\Access;
-use app\models\exceptions\Internal;
-use app\models\forms\AntragsgruenInitForm;
+use app\models\exceptions\FormError;
 use app\models\forms\SiteCreateForm;
-use Yii;
 use yii\helpers\Html;
-use yii\helpers\Url;
 use yii\web\Response;
 
 class ManagerController extends Base
 {
-
     /**
      * @inheritdoc
      */
     public function beforeAction($action)
     {
-        if (in_array($action->id, ['antragsgrueninit', 'antragsgrueninitdbtest'])) {
+        if (in_array($action->id, ['siteconfig'])) {
             // No cookieValidationKey is set in the beginning
             \Yii::$app->request->enableCookieValidation = false;
+            return parent::beforeAction($action);
+        }
+
+        if (!$this->getParams()->multisiteMode && !in_array($action->id, ['siteconfig', 'userlist'])) {
+            return false;
+        }
+
+        $currentHost = parse_url(\Yii::$app->request->getAbsoluteUrl(), PHP_URL_HOST);
+        $managerHost = parse_url($this->getParams()->domainPlain, PHP_URL_HOST);
+        if ($currentHost != $managerHost) {
+            return $this->redirect($this->getParams()->domainPlain, 301);
         }
 
         return parent::beforeAction($action);
@@ -43,46 +51,47 @@ class ManagerController extends Base
         foreach ($sites as $site) {
             $url      = UrlHelper::createUrl(['consultation/index', 'subdomain' => $site->subdomain]);
             $siteData = [
-                'title'        => $site->title,
+                'title'        => ($site->currentConsultation ? $site->currentConsultation->title : $site->title),
                 'organization' => $site->organization,
                 'url'          => $url,
             ];
-            if ($site->status == Site::STATUS_ACTIVE) {
+            $age      = time() - Tools::dateSql2timestamp($site->currentConsultation->dateCreation);
+            if ($site->status == Site::STATUS_ACTIVE && $age < 4 * 30 * 24 * 3600) {
                 $sitesCurrent[] = $siteData;
             } else {
-                $sitesOld[] = $sitesOld;
+                $sitesOld[] = $siteData;
             }
         }
-
 
         $sitesCurrent = $this->getParams()->getBehaviorClass()->getManagerCurrentSidebarSites($sitesCurrent);
         $html         = '<ul class="nav nav-list current-uses-list">';
-        $html .= '<li class="nav-header">' . \Yii::t('manager', 'sidebar_curr_uses') . '</li>';
+        $html         .= '<li class="nav-header">' . \Yii::t('manager', 'sidebar_curr_uses') . '</li>';
         foreach ($sitesCurrent as $data) {
             $html .= '<li>';
             if ($data['organization'] != '') {
-                $html .= '<span class="orga">' . Html::encode($data['organization']) . '</span>';
+                $html .= '<span class="orga">' . HTMLTools::encodeAddShy($data['organization']) . '</span>';
             }
-            $html .= Html::a(Html::encode($data['title']), $data['url']) . '</li>' . "\n";
+            $html .= Html::a(HTMLTools::encodeAddShy($data['title']), $data['url']) . '</li>' . "\n";
         }
-        $html .= '</ul>';
+        $html                            .= '</ul>';
         $this->layoutParams->menusHtml[] = $html;
 
 
         $sitesOld = $this->getParams()->getBehaviorClass()->getManagerOldSidebarSites($sitesOld);
         $html     = '<ul class="nav nav-list current-uses-list old-uses-list">';
-        $html .= '<li class="nav-header">' . \Yii::t('manager', 'sidebar_old_uses') . '</li>';
-        $html .= '<li class="shower"><a href="#" onClick="$(\'.old-uses-list .hidden\').removeClass(\'hidden\');
+        $html     .= '<li class="nav-header">' . \Yii::t('manager', 'sidebar_old_uses') . '</li>';
+        $html     .= '<li class="shower"><a href="#" onClick="$(\'.old-uses-list .hidden\').removeClass(\'hidden\');
             $(\'.old-uses-list .shower\').addClass(\'hidden\'); return false;" style="font-style: italic;">' .
             \Yii::t('manager', 'sidebar_old_uses_show') . '</a></li>';
+
         foreach ($sitesOld as $data) {
             $html .= '<li class="hidden">';
             if ($data['organization'] != '') {
-                $html .= '<span class="orga">' . Html::encode($data['organization']) . '</span>';
+                $html .= '<span class="orga">' . HTMLTools::encodeAddShy($data['organization']) . '</span>';
             }
-            $html .= Html::a(Html::encode($data['title']), $data['url']) . '</li>' . "\n";
+            $html .= Html::a(HTMLTools::encodeAddShy($data['title']), $data['url']) . '</li>' . "\n";
         }
-        $html .= '</ul>';
+        $html                            .= '</ul>';
         $this->layoutParams->menusHtml[] = $html;
 
     }
@@ -92,10 +101,14 @@ class ManagerController extends Base
      */
     public function actionIndex()
     {
-        $this->layout = 'column2';
-
-        $this->addSidebar();
-        return $this->render('index');
+        if (\Yii::$app->language == 'de') {
+            $this->layout = 'column2';
+            $this->addSidebar();
+            return $this->render('index_de');
+        } else {
+            $this->layout = 'column1';
+            return $this->render('index_en');
+        }
     }
 
     /**
@@ -103,12 +116,12 @@ class ManagerController extends Base
      */
     protected function eligibleToCreateUser()
     {
-        if (Yii::$app->user->isGuest) {
+        if (\Yii::$app->user->isGuest) {
             return null;
         }
 
         /** @var User $user */
-        $user = yii::$app->user->identity;
+        $user = \Yii::$app->user->identity;
 
         if (!$user->isEntitledToCreateSites()) {
             return null;
@@ -118,18 +131,36 @@ class ManagerController extends Base
     }
 
     /**
-     * @return User|null
      */
     protected function requireEligibleToCreateUser()
     {
+        if ($this->getParams()->mode == 'sandbox') {
+            // In sandbox mode, everyone is allowed to create a site
+            return;
+        }
+
         $user = $this->eligibleToCreateUser();
         if (!$user) {
             $this->redirect(UrlHelper::createUrl('manager/index'));
-            return null;
+            \Yii::$app->end();
         }
-        return $user;
     }
 
+    /**
+     * @param string $test
+     * @return string
+     */
+    public function actionCheckSubdomain($test)
+    {
+        \yii::$app->response->format = Response::FORMAT_RAW;
+        \yii::$app->response->headers->add('Content-Type', 'application/json');
+
+        $available = Site::isSubdomainAvailable($test);
+        return json_encode([
+            'available' => $available,
+            'subdomain' => $test,
+        ]);
+    }
 
     /**
      * @return string
@@ -138,39 +169,35 @@ class ManagerController extends Base
     {
         $this->requireEligibleToCreateUser();
 
-        $this->layout = 'column2';
-        $this->addSidebar();
+        $language = $this->getRequestValue('language');
+        if ($language && isset(MessageSource::getBaseLanguages()[$language])) {
+            \Yii::$app->language = $language;
+        }
 
         $model  = new SiteCreateForm();
         $errors = [];
 
-        if (isset($_POST['create'])) {
+        $post = \Yii::$app->request->post();
+        if (isset($post['create'])) {
             try {
-                $model->setAttributes($_POST['SiteCreateForm']);
+                $model->setAttributes($post['SiteCreateForm']);
                 if ($model->validate()) {
-                    $site = $model->createSiteFromForm(User::getCurrentUser());
-
-                    $login_id   = User::getCurrentUser()->id;
-                    $login_code = AntiXSS::createToken($login_id);
-
-                    return $this->render(
-                        'created',
-                        [
-                            'site'       => $site,
-                            'login_id'   => $login_id,
-                            'login_code' => $login_code,
-                        ]
-                    );
-                } else {
-                    foreach ($model->getErrors() as $message) {
-                        foreach ($message as $message2) {
-                            $errors[] = $message2;
-                        }
+                    if ($this->getParams()->mode == 'sandbox') {
+                        $user = $model->createSandboxUser();
+                    } else {
+                        $user = User::getCurrentUser();
                     }
+                    $model->create($user);
+                    return $this->render('created', ['form' => $model]);
+                } else {
+                    throw new FormError($model->getErrors());
                 }
             } catch (\Exception $e) {
                 $errors[] = $e->getMessage();
             }
+        }
+        if ($this->getParams()->mode == 'sandbox') {
+            $model->setSandboxParams();
         }
 
         return $this->render(
@@ -180,13 +207,24 @@ class ManagerController extends Base
                 'errors' => $errors
             ]
         );
-
     }
 
     /**
      * @return string
      */
-    public function actionLegal()
+    public function actionHelp()
+    {
+        if (\Yii::$app->language == 'de') {
+            return $this->render('help_de');
+        } else {
+            return $this->render('help_en');
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function actionSiteLegal()
     {
         return $this->renderContentPage('legal');
     }
@@ -194,7 +232,7 @@ class ManagerController extends Base
     /**
      * @return string
      */
-    public function actionPrivacy()
+    public function actionSitePrivacy()
     {
         return $this->renderContentPage('privacy');
     }
@@ -209,7 +247,7 @@ class ManagerController extends Base
         if (!User::currentUserIsSuperuser()) {
             throw new Access('No permissions to edit this page');
         }
-        if (MessageSource::savePageData(null, $pageKey, $_POST['data'])) {
+        if (MessageSource::savePageData(null, $pageKey, \Yii::$app->request->post('data'))) {
             return '1';
         } else {
             return '0';
@@ -217,6 +255,7 @@ class ManagerController extends Base
     }
 
     /**
+     * @return string
      */
     public function actionSiteconfig()
     {
@@ -231,17 +270,18 @@ class ManagerController extends Base
             return $this->showErrorpage(500, 'This configuration tool can only be used for single-site installations.');
         }
 
-        if (isset($_POST['save'])) {
-            $config->resourceBase          = $_POST['resourceBase'];
-            $config->baseLanguage          = $_POST['baseLanguage'];
-            $config->tmpDir                = $_POST['tmpDir'];
-            $config->xelatexPath           = $_POST['xelatexPath'];
-            $config->xdvipdfmx             = $_POST['xdvipdfmx'];
-            $config->mailFromEmail         = $_POST['mailFromEmail'];
-            $config->mailFromName          = $_POST['mailFromName'];
-            $config->confirmEmailAddresses = isset($_POST['confirmEmailAddresses']);
+        $post = \Yii::$app->request->post();
+        if (isset($post['save'])) {
+            $config->resourceBase          = $post['resourceBase'];
+            $config->baseLanguage          = $post['baseLanguage'];
+            $config->tmpDir                = $post['tmpDir'];
+            $config->xelatexPath           = $post['xelatexPath'];
+            $config->xdvipdfmx             = $post['xdvipdfmx'];
+            $config->mailFromEmail         = $post['mailFromEmail'];
+            $config->mailFromName          = $post['mailFromName'];
+            $config->confirmEmailAddresses = isset($post['confirmEmailAddresses']);
 
-            switch ($_POST['mailService']['transport']) {
+            switch ($post['mailService']['transport']) {
                 case 'none':
                     $config->mailService = ['transport' => 'none'];
                     break;
@@ -251,19 +291,26 @@ class ManagerController extends Base
                 case 'mandrill':
                     $config->mailService = [
                         'transport' => 'mandrill',
-                        'apiKey'    => $_POST['mailService']['mandrillApiKey'],
+                        'apiKey'    => $post['mailService']['mandrillApiKey'],
+                    ];
+                    break;
+                case 'mailgun':
+                    $config->mailService = [
+                        'transport' => 'mailgun',
+                        'apiKey'    => $post['mailService']['mailgunApiKey'],
+                        'domain'    => $post['mailService']['mailgunDomain'],
                     ];
                     break;
                 case 'smtp':
                     $config->mailService = [
                         'transport' => 'smtp',
-                        'host'      => $_POST['mailService']['smtpHost'],
-                        'port'      => $_POST['mailService']['smtpPort'],
-                        'authType'  => $_POST['mailService']['smtpAuthType'],
+                        'host'      => $post['mailService']['smtpHost'],
+                        'port'      => $post['mailService']['smtpPort'],
+                        'authType'  => $post['mailService']['smtpAuthType'],
                     ];
-                    if ($_POST['mailService']['smtpAuthType'] != 'none') {
-                        $config->mailService['username'] = $_POST['mailService']['smtpUsername'];
-                        $config->mailService['password'] = $_POST['mailService']['smtpPassword'];
+                    if ($post['mailService']['smtpAuthType'] != 'none') {
+                        $config->mailService['username'] = $post['mailService']['smtpUsername'];
+                        $config->mailService['password'] = $post['mailService']['smtpPassword'];
                     }
                     break;
             }
@@ -277,8 +324,12 @@ class ManagerController extends Base
 
         $editable = is_writable($configfile);
 
-        $myUsername         = posix_getpwuid(posix_geteuid());
-        $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configfile;
+        if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+            $myUsername         = posix_getpwuid(posix_geteuid());
+            $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configfile;
+        } else {
+            $makeEditabeCommand = 'not available';
+        }
 
         return $this->render('siteconfig', [
             'config'             => $config,
@@ -288,126 +339,16 @@ class ManagerController extends Base
     }
 
     /**
-     */
-    public function actionAntragsgrueninit()
-    {
-        $configDir   = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config';
-        $installFile = $configDir . DIRECTORY_SEPARATOR . 'INSTALLING';
-        $configFile  = $configDir . DIRECTORY_SEPARATOR . 'config.json';
-
-        if (!file_exists($installFile)) {
-            $msg = \Yii::t('manager', 'already_created_reinit') . '<br><br>';
-            $url = Url::toRoute('manager/siteconfig');
-            $msg .= Html::a(\Yii::t('manager', 'created_goon_std_config'), $url, ['class' => 'btn btn-primary']);
-            $msg = str_replace('%FILE%', Html::encode($installFile), $msg);
-            return $this->showErrorpage(403, $msg);
-        }
-
-        $myUsername = posix_getpwuid(posix_geteuid());
-        if (file_exists($configFile)) {
-            $editable           = is_writable($configFile);
-            $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configFile;
-        } else {
-            $editable           = is_writable($configDir);
-            $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configDir;
-        }
-
-        $form = new AntragsgruenInitForm($configFile);
-
-        $baseUrl = parse_url($form->siteUrl);
-        if (isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_HOST'] != '' &&
-            isset($baseUrl['host']) && $baseUrl['host'] != $_SERVER['HTTP_HOST']
-        ) {
-            return $this->redirect($form->siteUrl);
-        }
-
-        if (isset($_POST['finishInit'])) {
-            unlink($installFile);
-            return $this->render('antragsgruen_init_done');
-        }
-
-        if (isset($_POST['save'])) {
-            $form->setAttributes($_POST);
-            $form->sqlCreateTables = isset($_POST['sqlCreateTables']);
-            $form->prettyUrls      = isset($_POST['prettyUrls']);
-
-            if ($editable) {
-                $form->saveConfig();
-            }
-
-            if ($form->sqlCreateTables && $form->verifyDBConnection(false) && !$form->tablesAreCreated()) {
-                $form->createTables();
-                \yii::$app->session->setFlash('success', \Yii::t('manager', 'msg_site_created'));
-            } else {
-                \yii::$app->session->setFlash('success', \Yii::t('manager', 'msg_config_saved'));
-            }
-
-            if ($form->tablesAreCreated()) {
-                $connConfig          = $form->getDBConfig();
-                $connConfig['class'] = \yii\db\Connection::class;
-                \yii::$app->set('db', $connConfig);
-
-                if ($form->adminUsername != '' && $form->adminPassword != '') {
-                    $form->createOrUpdateAdminAccount();
-                }
-                if ($form->adminUser) {
-                    if ($form->getDefaultSite()) {
-                        $form->updateSite();
-                    } else {
-                        $form->createSite();
-                    }
-                }
-                if ($editable) {
-                    $form->saveConfig();
-                }
-            }
-
-            return $this->redirect($form->getConfig()->resourceBase);
-        }
-
-        $delInstallFileCmd = 'rm ' . $installFile;
-
-        return $this->render('antragsgruen_init', [
-            'form'                 => $form,
-            'installFileDeletable' => is_writable($configDir),
-            'delInstallFileCmd'    => $delInstallFileCmd,
-            'editable'             => $editable,
-            'makeEditabeCommand'   => $makeEditabeCommand,
-        ]);
-    }
-
-    /**
      * @return string
-     * @throws Internal
      */
-    public function actionAntragsgrueninitdbtest()
+    public function actionUserlist()
     {
-        \yii::$app->response->format = Response::FORMAT_RAW;
-        \yii::$app->response->headers->add('Content-Type', 'application/json');
-
-        $configDir   = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config';
-        $installFile = $configDir . DIRECTORY_SEPARATOR . 'INSTALLING';
-        $configFile  = $configDir . DIRECTORY_SEPARATOR . 'config.json';
-
-        if (!file_exists($installFile)) {
-            throw new Internal('Installation mode not activated');
+        if (!User::currentUserIsSuperuser()) {
+            return $this->showErrorpage(403, 'Only admins are allowed to access this page.');
         }
 
-        $form = new AntragsgruenInitForm($configFile);
-        $form->setAttributes($_POST);
+        $users = User::find()->orderBy('dateCreation DESC')->all();
 
-        try {
-            $success = $form->verifyDBConnection(true);
-            return json_encode([
-                'success'        => $success,
-                'alreadyCreated' => $form->tablesAreCreated(),
-            ]);
-        } catch (\Exception $e) {
-            return json_encode([
-                'success'        => false,
-                'error'          => $e->getMessage(),
-                'alreadyCreated' => null,
-            ]);
-        }
+        return $this->render('userlist', ['users' => $users]);
     }
 }

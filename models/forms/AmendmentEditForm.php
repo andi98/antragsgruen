@@ -30,6 +30,8 @@ class AmendmentEditForm extends Model
     /** @var string */
     public $editorial = '';
 
+    public $globalAlternative = false;
+
     private $adminMode = false;
 
     /**
@@ -43,15 +45,16 @@ class AmendmentEditForm extends Model
         /** @var AmendmentSection[] $amendmentSections */
         $amendmentSections = [];
         $motionSections    = [];
-        foreach ($motion->sections as $section) {
+        foreach ($motion->getActiveSections() as $section) {
             $motionSections[$section->sectionId] = $section;
         }
         if ($amendment) {
-            $this->amendmentId = $amendment->id;
-            $this->supporters  = $amendment->amendmentSupporters;
-            $this->reason      = $amendment->changeExplanation;
-            $this->editorial   = $amendment->changeEditorial;
-            foreach ($amendment->sections as $section) {
+            $this->amendmentId       = $amendment->id;
+            $this->supporters        = $amendment->amendmentSupporters;
+            $this->reason            = $amendment->changeExplanation;
+            $this->editorial         = $amendment->changeEditorial;
+            $this->globalAlternative = ($amendment->globalAlternative == 1);
+            foreach ($amendment->getActiveSections() as $section) {
                 $amendmentSections[$section->sectionId] = $section;
                 if ($section->data == '' && isset($motionSections[$section->sectionId])) {
                     $data                                            = $motionSections[$section->sectionId]->data;
@@ -99,7 +102,9 @@ class AmendmentEditForm extends Model
             [['type'], 'required'],
             [['id', 'type'], 'number'],
             [
-                'type', 'required', 'message' => \Yii::t('amend', 'err_type_missing')
+                'type',
+                'required',
+                'message' => \Yii::t('amend', 'err_type_missing')
             ],
             [['supporters', 'tags', 'type'], 'safe'],
         ];
@@ -122,6 +127,26 @@ class AmendmentEditForm extends Model
             $suppNew = new AmendmentSupporter();
             $suppNew->setAttributes($supp->getAttributes());
             $this->supporters[] = $suppNew;
+        }
+    }
+
+    /**
+     * @param Amendment $amendment
+     */
+    public function cloneAmendmentText(Amendment $amendment)
+    {
+        $this->reason    = $amendment->changeExplanation;
+        $this->editorial = $amendment->changeEditorial;
+        /** @var AmendmentSection[] $byId */
+        $byId = [];
+        foreach ($amendment->getActiveSections() as $section) {
+            $byId[$section->sectionId] = $section;
+        }
+        foreach ($this->sections as $section) {
+            if (isset($byId[$section->sectionId])) {
+                $section->data    = $byId[$section->sectionId]->data;
+                $section->dataRaw = $byId[$section->sectionId]->dataRaw;
+            }
         }
     }
 
@@ -155,7 +180,12 @@ class AmendmentEditForm extends Model
         }
         if (isset($values['amendmentEditorial'])) {
             $this->editorial = HTMLTools::cleanSimpleHtml($values['amendmentEditorial']);
+        } else {
+            $this->editorial = '';
         }
+
+        $globalAlternativesAllowed = $this->motion->getMyConsultation()->getSettings()->globalAlternatives;
+        $this->globalAlternative   = (isset($values['globalAlternative']) && $globalAlternativesAllowed);
     }
 
 
@@ -177,7 +207,7 @@ class AmendmentEditForm extends Model
         }
 
         try {
-            $this->motion->motionType->getAmendmentInitiatorFormClass()->validateAmendment();
+            $this->motion->motionType->getAmendmentSupportTypeClass()->validateAmendment();
         } catch (FormError $e) {
             $errors = array_merge($errors, $e->getMessages());
         }
@@ -193,14 +223,14 @@ class AmendmentEditForm extends Model
      */
     public function createAmendment()
     {
-        if (!$this->motion->motionType->getAmendmentPolicy()->checkCurrUserAmendment()) {
+        if (!$this->motion->isCurrentlyAmendable()) {
             throw new FormError(\Yii::t('amend', 'err_create_permission'));
         }
 
         $amendment = new Amendment();
 
-        $this->setAttributes([$_POST, $_FILES]);
-        $this->supporters = $this->motion->motionType->getAmendmentInitiatorFormClass()
+        $this->setAttributes([\Yii::$app->request->post(), $_FILES]);
+        $this->supporters = $this->motion->motionType->getAmendmentSupportTypeClass()
             ->getAmendmentSupporters($amendment);
 
         $this->createAmendmentVerify();
@@ -208,16 +238,17 @@ class AmendmentEditForm extends Model
         $amendment->status            = Motion::STATUS_DRAFT;
         $amendment->statusString      = '';
         $amendment->motionId          = $this->motion->id;
-        $amendment->textFixed         = ($this->motion->getConsultation()->getSettings()->adminsMayEdit ? 0 : 1);
+        $amendment->textFixed         = ($this->motion->getMyConsultation()->getSettings()->adminsMayEdit ? 0 : 1);
         $amendment->titlePrefix       = '';
         $amendment->dateCreation      = date('Y-m-d H:i:s');
         $amendment->changeEditorial   = $this->editorial;
         $amendment->changeExplanation = $this->reason;
+        $amendment->globalAlternative = ($this->globalAlternative ? 1 : 0);
         $amendment->changeText        = '';
         $amendment->cache             = '';
 
         if ($amendment->save()) {
-            $this->motion->motionType->getAmendmentInitiatorFormClass()->submitAmendment($amendment);
+            $this->motion->motionType->getAmendmentSupportTypeClass()->submitAmendment($amendment);
 
             foreach ($this->sections as $section) {
                 $section->amendmentId = $amendment->id;
@@ -250,7 +281,7 @@ class AmendmentEditForm extends Model
             }
         }
 
-        $this->motion->motionType->getAmendmentInitiatorFormClass()->validateAmendment();
+        $this->motion->motionType->getAmendmentSupportTypeClass()->validateAmendment();
 
         if (count($errors) > 0) {
             throw new FormError(implode("\n", $errors));
@@ -264,25 +295,26 @@ class AmendmentEditForm extends Model
      */
     public function saveAmendment(Amendment $amendment)
     {
-        $motionType = $this->motion->motionType;
-        if (!$motionType->getAmendmentPolicy()->checkCurrUserAmendment()) {
+        if (!$this->motion->isCurrentlyAmendable()) {
             throw new FormError(\Yii::t('amend', 'err_create_permission'));
         }
 
         $this->supporters = $this->motion->motionType
-            ->getAmendmentInitiatorFormClass()->getAmendmentSupporters($amendment);
+            ->getAmendmentSupportTypeClass()->getAmendmentSupporters($amendment);
 
         if (!$this->adminMode) {
             $this->saveAmendmentVerify();
         }
         $amendment->changeExplanation = $this->reason;
         $amendment->changeEditorial   = $this->editorial;
+        $amendment->globalAlternative = ($this->globalAlternative ? 1 : 0);
 
         if ($amendment->save()) {
-            $motionType->getAmendmentInitiatorFormClass()->submitAmendment($amendment);
+            $motionType = $this->motion->motionType;
+            $motionType->getAmendmentSupportTypeClass()->submitAmendment($amendment);
 
             // Sections
-            foreach ($amendment->sections as $section) {
+            foreach ($amendment->getActiveSections() as $section) {
                 $section->delete();
             }
             foreach ($this->sections as $section) {

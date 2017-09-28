@@ -2,17 +2,16 @@
 
 namespace app\tests\_pages;
 
-use yii\codeception\BasePage;
+use Helper\BasePage;
 
 /**
- * Represents contact page
  * @property \AcceptanceTester|\FunctionalTester $actor
  */
 class AdminConsultationPage extends BasePage
 {
     public $route = 'admin/index/consultation';
 
-    public static $maintainanceCheckbox = '#maintainanceMode';
+    public static $maintenanceCheckbox = '#maintenanceMode';
 
     public function selectAmendmentNumbering($numbering)
     {

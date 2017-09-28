@@ -17,6 +17,7 @@ class Site
     /** @var int */
     public $willingToPay            = 0;
     public $willingToPayLastAskedTs = 0;
+    public $billSent                = 0;
 
     /** @var int[] */
     public $loginMethods = [0, 1, 3];
@@ -33,6 +34,7 @@ class Site
     const LOGIN_WURZELWERK = 1;
     const LOGIN_NAMESPACED = 2;
     const LOGIN_EXTERNAL   = 3;
+    const LOGIN_SAML       = 4;
 
     public static $SITE_MANAGER_LOGIN_METHODS = [0, 1, 3];
 

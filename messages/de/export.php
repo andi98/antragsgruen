@@ -2,10 +2,10 @@
 
 return [
     'Page'                  => 'Seite',
-    'Initiators'            => 'InitiatorInnen',
+    'Initiators'            => 'Initiator*innen',
     'introduction'          => 'Antrag an die...',
-    'InitiatorSingle'       => 'Antragsteller/in',
-    'InitiatorMulti'        => 'Antragsteller/innen',
+    'InitiatorSingle'       => 'Antragsteller*in',
+    'InitiatorMulti'        => 'Antragsteller*innen',
     'ResolutionDate'        => 'Beschlussdatum',
     'AgendaItem'            => 'Tagesordnungspunkt',
     'TopicSingle'           => 'Thema',
@@ -22,8 +22,9 @@ return [
     'amend_change'          => 'Änderung',
     'amend_reason'          => 'Begründung',
     'motion_reason'         => 'Begründung',
+    'agenda_item'           => 'TOP',
     'prefix_short'          => 'Antragsnr.',
-    'initiator'             => 'AntragstellerIn',
+    'initiator'             => 'Antragsteller*in',
     'text'                  => 'Text',
     'tags'                  => 'Themen',
     'contact'               => 'Kontakt',
@@ -33,4 +34,7 @@ return [
     'mail_body'             => "Hallo %NAME%,\n\nich schreibe wegen Deines %MOTION% , für den ich in der Antragskommission zuständig bin.",
     'filename_amendments'   => 'Aenderungsantraege',
     'filename_motions'      => 'Antraege',
+    'incl_withdrawn'        => 'Zurückgezogene',
+    'btn_openslides'        => 'Openslides',
+    'btn_amendments'        => 'Änderungsanträge',
 ];

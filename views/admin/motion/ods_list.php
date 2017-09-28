@@ -1,8 +1,9 @@
 <?php
 
+use app\components\HTMLTools;
 use app\models\db\ConsultationMotionType;
 use app\models\db\Motion;
-use \app\components\opendocument\Spreadsheet;
+use CatoTH\HTML2OpenDocument\Spreadsheet;
 
 /**
  * @var $this yii\web\View
@@ -20,25 +21,25 @@ $DEBUG = false;
 /** @var \app\models\settings\AntragsgruenApp $params */
 $params = \yii::$app->params;
 
-$tmpZipFile   = $params->tmpDir . uniqid('zip-');
-$templateFile = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'OpenOffice-Template.ods';
-copy($templateFile, $tmpZipFile);
-
-$zip = new ZipArchive();
-if ($zip->open($tmpZipFile) !== true) {
-    die("cannot open <$tmpZipFile>\n");
-}
-
-$content = $zip->getFromName('content.xml');
-$doc     = new Spreadsheet($content);
-
+$doc = new Spreadsheet([
+    'tmpPath'   => $params->tmpDir,
+    'trustHtml' => true,
+]);
 
 $currCol = $firstCol = 1;
 
 
-$hasTags = ($consultation->tags > 0);
+$hasTags        = ($consultation->tags > 0);
+$hasAgendaItems = false;
+foreach ($motions as $motion) {
+    if ($motion->agendaItem) {
+        $hasAgendaItems = true;
+    }
+}
 
-
+if ($hasAgendaItems) {
+    $COL_AGENDA_ITEM = $currCol++;
+}
 $COL_PREFIX    = $currCol++;
 $COL_INITIATOR = $currCol++;
 $COL_TEXTS     = [];
@@ -67,6 +68,11 @@ $doc->setMinRowHeight(1, 1.5);
 
 
 // Heading
+
+if ($hasAgendaItems) {
+    $doc->setCell(2, $COL_AGENDA_ITEM, Spreadsheet::TYPE_TEXT, \Yii::t('export', 'agenda_item'));
+    $doc->setCellStyle(2, $COL_AGENDA_ITEM, [], ['fo:font-weight' => 'bold']);
+}
 
 $doc->setCell(2, $COL_PREFIX, Spreadsheet::TYPE_TEXT, \Yii::t('export', 'prefix_short'));
 $doc->setCellStyle(2, $COL_PREFIX, [], ['fo:font-weight' => 'bold']);
@@ -114,6 +120,9 @@ foreach ($motions as $motion) {
         }
     }
 
+    if ($hasAgendaItems && $motion->agendaItem) {
+        $doc->setCell($row, $COL_AGENDA_ITEM, Spreadsheet::TYPE_TEXT, $motion->agendaItem->getShownCode(true));
+    }
     $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_TEXT, $motion->titlePrefix);
     $doc->setCell($row, $COL_INITIATOR, Spreadsheet::TYPE_TEXT, implode(', ', $initiatorNames));
     $doc->setCell($row, $COL_CONTACT, Spreadsheet::TYPE_TEXT, implode("\n", $initiatorContacts));
@@ -125,15 +134,17 @@ foreach ($motions as $motion) {
             $text .= $section->getSectionType()->getMotionODS();
             $text .= "\n\n";
         }
+        $text = HTMLTools::correctHtmlErrors($text);
         $doc->setCell($row, $COL_TEXTS[0], Spreadsheet::TYPE_HTML, $text);
     } else {
         foreach ($motionType->motionSections as $section) {
             $text = '';
-            foreach ($motion->sections as $sect) {
+            foreach ($motion->getActiveSections() as $sect) {
                 if ($sect->sectionId == $section->id) {
                     $text = $sect->getSectionType()->getMotionODS();
                 }
             }
+            $text = HTMLTools::correctHtmlErrors($text);
             $doc->setCell($row, $COL_TEXTS[$section->id], Spreadsheet::TYPE_HTML, $text);
         }
     }
@@ -146,16 +157,4 @@ foreach ($motions as $motion) {
     }
 }
 
-
-$content = $doc->create();
-
-if ($DEBUG) {
-    $doc->debugOutput();
-}
-
-$zip->deleteName('content.xml');
-$zip->addFromString('content.xml', $content);
-$zip->close();
-
-readfile($tmpZipFile);
-unlink($tmpZipFile);
+echo $doc->finishAndGetDocument();

@@ -3,28 +3,34 @@
 namespace app\models\sectionTypes;
 
 use app\components\latex\Content;
-use app\components\opendocument\Text;
 use app\components\UrlHelper;
 use app\models\db\MotionSection;
 use app\models\exceptions\FormError;
+use app\models\exceptions\Internal;
 use app\models\settings\AntragsgruenApp;
 use app\views\pdfLayouts\IPDFLayout;
 use yii\helpers\Html;
+use CatoTH\HTML2OpenDocument\Text;
 
 class Image extends ISectionType
 {
     /**
-     * @return string
+     * @return null|string
      */
     public function getImageUrl()
     {
         /** @var MotionSection $section */
         $section = $this->section;
-        $url     = UrlHelper::createUrl(
+        $motion  = $section->getMotion();
+        if (!$motion || !$section->data) {
+            return null;
+        }
+
+        $url = UrlHelper::createUrl(
             [
                 'motion/viewimage',
-                'motionId'  => $section->motionId,
-                'sectionId' => $section->sectionId
+                'motionSlug' => $section->getMotion()->getMotionSlug(),
+                'sectionId'  => $section->sectionId
             ]
         );
         return $url;
@@ -37,9 +43,10 @@ class Image extends ISectionType
     {
         /** @var MotionSection $section */
         $type = $this->section->getSettings();
+        $url  = $this->getImageUrl();
         $str  = '';
-        if ($this->section->data) {
-            $str .= '<img src="' . Html::encode($this->getImageUrl()) . '" alt="Current Image"
+        if ($url) {
+            $str      .= '<img src="' . Html::encode($this->getImageUrl()) . '" alt="Current Image"
             style="float: right; max-width: 100px; max-height: 100px; margin-left: 20px;">';
             $required = false;
         } else {
@@ -51,7 +58,7 @@ class Image extends ISectionType
             <input type="file" class="form-control" id="sections_' . $type->id . '" ' . $required .
             ' name="sections[' . $type->id . ']">
         </div>';
-        if ($this->section->data) {
+        if ($url) {
             $str .= '<br style="clear: both;">';
         }
         return $str;
@@ -66,7 +73,30 @@ class Image extends ISectionType
     }
 
     /**
-     * @param string $data
+     * @param string $filename
+     * @param string $targetType
+     * @return string
+     * @throws Internal
+     */
+    public static function getOptimizedImage($filename, $targetType)
+    {
+        /** @var AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        if ($app->imageMagickPath === null) {
+            return file_get_contents($filename);
+        } elseif (!file_exists($app->imageMagickPath)) {
+            throw new Internal("ImageMagick not correctly set up");
+        }
+
+        $tmpfile = $app->tmpDir . uniqid('image-conv-') . "." . $targetType;
+        exec($app->imageMagickPath . " -strip \"" . addslashes($filename) . "\" \"" . addslashes($tmpfile) . "\"");
+        $converted = (file_exists($tmpfile) ? file_get_contents($tmpfile) : '');
+        unlink($tmpfile);
+        return $converted;
+    }
+
+    /**
+     * @param array $data
      * @throws FormError
      */
     public function setMotionData($data)
@@ -74,26 +104,41 @@ class Image extends ISectionType
         if (!isset($data['tmp_name'])) {
             throw new FormError('Invalid Image');
         }
-        $mime = mime_content_type($data['tmp_name']);
-        if (!in_array($mime, ['image/png', 'image/jpg', 'image/jpeg', 'image/gif'])) {
-            throw new FormError('Image type not supported. Supported formats are: JPEG, PNG and GIF.');
-        }
+        $mime      = mime_content_type($data['tmp_name']);
         $imagedata = getimagesize($data['tmp_name']);
         if (!$imagedata) {
             throw new FormError('Could not read image.');
         }
+
+        switch ($mime) {
+            case 'image/png':
+                $fileExt = 'png';
+                break;
+            case 'image/jpg':
+            case 'image/jpeg':
+                $fileExt = 'jpeg';
+                break;
+            case 'image/gif':
+                $fileExt = 'gif';
+                break;
+            default:
+                throw new FormError('Image type not supported. Supported formats are: JPEG, PNG and GIF.');
+        }
+
+        $optimized = static::getOptimizedImage($data['tmp_name'], $fileExt);
+
         $metadata                = [
             'width'    => $imagedata[0],
             'height'   => $imagedata[1],
-            'filesize' => filesize($data['tmp_name']),
+            'filesize' => strlen($optimized),
             'mime'     => $mime
         ];
-        $this->section->data     = base64_encode(file_get_contents($data['tmp_name']));
+        $this->section->data     = base64_encode($optimized);
         $this->section->metadata = json_encode($metadata);
     }
 
     /**
-     * @param string $data
+     * @param array $data
      * @throws FormError
      */
     public function setAmendmentData($data)
@@ -112,6 +157,7 @@ class Image extends ISectionType
     /**
      * @param bool $isRight
      * @return string
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
     public function getSimple($isRight)
     {
@@ -151,9 +197,9 @@ class Image extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printMotionToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printMotionToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         if ($this->isEmpty()) {
             return;
@@ -186,9 +232,9 @@ class Image extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         $this->printMotionToPDF($pdfLayout, $pdf);
     }
@@ -198,7 +244,6 @@ class Image extends ISectionType
      */
     public function getMotionPlainText()
     {
-
         return '[BILD]';
     }
 
@@ -260,7 +305,7 @@ class Image extends ISectionType
 
     /**
      * @param Text $odt
-     * @return mixed
+     * @return void
      */
     public function printMotionToODT(Text $odt)
     {
@@ -270,7 +315,7 @@ class Image extends ISectionType
 
     /**
      * @param Text $odt
-     * @return mixed
+     * @return void
      */
     public function printAmendmentToODT(Text $odt)
     {

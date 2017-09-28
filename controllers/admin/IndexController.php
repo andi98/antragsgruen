@@ -4,20 +4,15 @@ namespace app\controllers\admin;
 
 use app\components\Tools;
 use app\components\UrlHelper;
-use app\models\db\Amendment;
-use app\models\db\AmendmentComment;
 use app\models\db\Consultation;
 use app\models\db\ConsultationSettingsTag;
 use app\models\db\ConsultationText;
 use app\models\db\ISupporter;
-use app\models\db\Motion;
-use app\models\db\MotionComment;
 use app\models\AdminTodoItem;
 use app\models\db\Site;
 use app\models\db\User;
 use app\models\exceptions\FormError;
 use app\models\forms\ConsultationCreateForm;
-use app\models\settings\AntragsgruenApp;
 use yii\web\Response;
 
 class IndexController extends AdminBase
@@ -29,65 +24,19 @@ class IndexController extends AdminBase
      */
     public function actionIndex()
     {
-        /** @var AdminTodoItem[] $todo */
-        $todo = [];
-
-        if (!is_null($this->consultation)) {
-            $motions = Motion::getScreeningMotions($this->consultation);
-            foreach ($motions as $motion) {
-                $description = \Yii::t('admin', 'todo_from') . ': ' . $motion->getInitiatorsStr();
-                $todo[]      = new AdminTodoItem(
-                    'motionScreen' . $motion->id,
-                    $motion->getTitleWithPrefix(),
-                    str_replace('%TYPE%', $motion->motionType->titleSingular, \Yii::t('admin', 'todo_motion_screen')),
-                    UrlHelper::createUrl(['admin/motion/update', 'motionId' => $motion->id]),
-                    $description
-                );
-            }
-            $amendments = Amendment::getScreeningAmendments($this->consultation);
-            foreach ($amendments as $amend) {
-                $description = \Yii::t('admin', 'todo_from') . ': ' . $amend->getInitiatorsStr();
-                $todo[]      = new AdminTodoItem(
-                    'amendmentsScreen' . $amend->id,
-                    $amend->getTitle(),
-                    \Yii::t('admin', 'todo_amendment_screen'),
-                    UrlHelper::createUrl(['admin/amendment/update', 'amendmentId' => $amend->id]),
-                    $description
-                );
-            }
-            $comments = MotionComment::getScreeningComments($this->consultation);
-            foreach ($comments as $comment) {
-                $description = \Yii::t('admin', 'todo_from') . ': ' . $comment->name;
-                $todo[]      = new AdminTodoItem(
-                    'motionCommentScreen' . $comment->id,
-                    \Yii::t('admin', 'todo_comment_to') . ': ' . $comment->motion->getTitleWithPrefix(),
-                    \Yii::t('admin', 'todo_comment_screen'),
-                    $comment->getLink(),
-                    $description
-                );
-            }
-            $comments = AmendmentComment::getScreeningComments($this->consultation);
-            foreach ($comments as $comment) {
-                $description = 'Von: ' . $comment->name;
-                $todo[]      = new AdminTodoItem(
-                    'amendmentCommentScreen' . $comment->id,
-                    \Yii::t('admin', 'todo_comment_to') . ': ' . $comment->amendment->getTitle(),
-                    \Yii::t('admin', 'todo_comment_screen'),
-                    $comment->getLink(),
-                    $description
-                );
-            }
+        if ($this->isPostSet('flushCaches') && User::currentUserIsSuperuser()) {
+            $this->consultation->flushCacheWithChildren();
+            \Yii::$app->session->setFlash('success', \Yii::t('admin', 'index_flushed_cached'));
         }
 
-        if (isset($_POST['flushCaches']) && User::currentUserIsSuperuser()) {
-            AntragsgruenApp::flushAllCaches();
-            \Yii::$app->session->setFlash('success', \Yii::t('admin', 'index_flushed_cached'));
+        if ($this->isPostSet('delSite')) {
+            $this->site->setDeleted();
+            return $this->render('site_deleted', []);
         }
 
         return $this->render(
             'index',
             [
-                'todo'         => $todo,
                 'site'         => $this->site,
                 'consultation' => $this->consultation
             ]
@@ -104,24 +53,25 @@ class IndexController extends AdminBase
 
         $locale = Tools::getCurrentDateLocale();
 
-        if (isset($_POST['save'])) {
+        if ($this->isPostSet('save')) {
             $this->saveTags($model);
+            $post = \Yii::$app->request->post();
 
-            $data = $_POST['consultation'];
+            $data = $post['consultation'];
             $model->setAttributes($data);
 
-            $settingsInput = (isset($_POST['settings']) ? $_POST['settings'] : []);
+            $settingsInput = (isset($post['settings']) ? $post['settings'] : []);
             $settings      = $model->getSettings();
-            $settings->saveForm($settingsInput, $_POST['settingsFields']);
+            $settings->saveForm($settingsInput, $post['settingsFields']);
             $model->setSettings($settings);
 
             if ($model->save()) {
-                $settingsInput = (isset($_POST['siteSettings']) ? $_POST['siteSettings'] : []);
+                $settingsInput = (isset($post['siteSettings']) ? $post['siteSettings'] : []);
                 $siteSettings  = $model->site->getSettings();
-                $siteSettings->saveForm($settingsInput, $_POST['siteSettingsFields']);
+                $siteSettings->saveForm($settingsInput, $post['siteSettingsFields']);
                 $model->site->setSettings($siteSettings);
                 if ($model->site->currentConsultationId == $model->id) {
-                    $model->site->status = ($settings->maintainanceMode ? Site::STATUS_INACTIVE : Site::STATUS_ACTIVE);
+                    $model->site->status = ($settings->maintenanceMode ? Site::STATUS_INACTIVE : Site::STATUS_ACTIVE);
                 }
                 $model->site->save();
 
@@ -135,7 +85,7 @@ class IndexController extends AdminBase
                 }
 
                 $this->site->getSettings()->siteLayout = $siteSettings->siteLayout;
-                $this->layoutParams->mainCssFile       = $siteSettings->siteLayout;
+                $this->layoutParams->setLayout($siteSettings->siteLayout);
 
                 $model->flushCacheWithChildren();
                 \yii::$app->session->setFlash('success', \Yii::t('base', 'saved'));
@@ -148,11 +98,21 @@ class IndexController extends AdminBase
     }
 
     /**
+     * @return string
+     */
+    public function actionTodo()
+    {
+        $todo = AdminTodoItem::getConsultationTodos($this->consultation);
+
+        return $this->render('todo', ['todo' => $todo]);
+    }
+
+    /**
      * @param Consultation $consultation
      */
     private function saveTags(Consultation $consultation)
     {
-        if (!isset($_POST['tags'])) {
+        if (!$this->isPostSet('tags')) {
             return;
         }
 
@@ -184,7 +144,7 @@ class IndexController extends AdminBase
         };
 
         $foundTags = [];
-        $newTags   = json_decode($_POST['tags'], true);
+        $newTags   = json_decode(\Yii::$app->request->post('tags'), true);
         foreach ($newTags as $pos => $newTag) {
             if ($newTag['id'] == 0) {
                 if ($getByName($newTag['name'])) {
@@ -227,14 +187,14 @@ class IndexController extends AdminBase
     {
         $consultation = $this->consultation;
 
-        if (isset($_POST['save']) && isset($_POST['wordingBase'])) {
-            $consultation->wordingBase = $_POST['wordingBase'];
+        if ($this->isPostSet('save') && $this->isPostSet('wordingBase')) {
+            $consultation->wordingBase = \Yii::$app->request->post('wordingBase');
             $consultation->save();
             \yii::$app->session->setFlash('success', \Yii::t('base', 'saved'));
         }
 
-        if (isset($_POST['save']) && isset($_POST['string'])) {
-            foreach ($_POST['string'] as $key => $val) {
+        if ($this->isPostSet('save') && $this->isPostSet('string')) {
+            foreach (\Yii::$app->request->post('string') as $key => $val) {
                 $key   = urldecode($key);
                 $found = false;
                 foreach ($consultation->texts as $text) {
@@ -272,15 +232,22 @@ class IndexController extends AdminBase
     {
         $site = $this->site;
 
-        $form           = new ConsultationCreateForm();
-        $form->template = $this->consultation;
+        if (!User::currentUserHasPrivilege($this->consultation, User::PRIVILEGE_SITE_ADMIN)) {
+            $this->showErrorpage(403, \Yii::t('admin', 'no_access'));
+            return false;
+        }
 
-        if (isset($_POST['createConsultation'])) {
-            $form->setAttributes($_POST['newConsultation'], true);
-            $form->setAsDefault = isset($_POST['newConsultation']['setStandard']);
-            if (isset($_POST['newConsultation']['template'])) {
+        $form           = new ConsultationCreateForm($site);
+        $form->template = $this->consultation;
+        $post           = \Yii::$app->request->post();
+
+        if ($this->isPostSet('createConsultation')) {
+            $newcon = $post['newConsultation'];
+            $form->setAttributes($newcon, true);
+            $form->siteCreateWizard->setAttributes($post['SiteCreateForm']);
+            if (isset($newcon['template'])) {
                 foreach ($this->site->consultations as $cons) {
-                    if ($cons->id == $_POST['newConsultation']['template']) {
+                    if ($cons->id == $post['newConsultation']['template']) {
                         $form->template = $cons;
                     }
                 }
@@ -288,18 +255,20 @@ class IndexController extends AdminBase
             try {
                 $form->createConsultation();
                 \yii::$app->session->setFlash('success', \Yii::t('admin', 'cons_new_created'));
+
+                $form = new ConsultationCreateForm($site);
             } catch (FormError $e) {
                 \yii::$app->session->setFlash('error', $e->getMessage());
             }
             $this->site->refresh();
         }
-        if (isset($_POST['setStandard'])) {
-            if (is_array($_POST['setStandard']) && count($_POST['setStandard']) == 1) {
-                $keys = array_keys($_POST['setStandard']);
+        if ($this->isPostSet('setStandard')) {
+            if (is_array($post['setStandard']) && count($post['setStandard']) == 1) {
+                $keys = array_keys($post['setStandard']);
                 foreach ($site->consultations as $consultation) {
                     if ($consultation->id == $keys[0]) {
                         $site->currentConsultationId = $consultation->id;
-                        if ($consultation->getSettings()->maintainanceMode) {
+                        if ($consultation->getSettings()->maintenanceMode) {
                             $site->status = Site::STATUS_INACTIVE;
                         } else {
                             $site->status = Site::STATUS_ACTIVE;
@@ -311,14 +280,34 @@ class IndexController extends AdminBase
             }
             $this->site->refresh();
         }
+        if ($this->isPostSet('delete') && count($post['delete']) == 1) {
+            foreach ($site->consultations as $consultation) {
+                $keys = array_keys($post['delete']);
+                if ($consultation->id == $keys[0] && $site->currentConsultationId != $consultation->id) {
+                    $consultation->setDeleted();
+                    \yii::$app->session->setFlash('success', \Yii::t('admin', 'cons_delete_done'));
+                    if ($this->consultation->id == $consultation->id) {
+                        $fallback = $this->site->currentConsultation->urlPath;
+                        
+                        $url = UrlHelper::createUrl(['admin/index/siteconsultations', 'consultationPath' => $fallback]);
+                        return $this->redirect($url);
+                    }
+                }
+            }
+        }
 
-        return $this->render('site_consultations', ['site' => $site, 'createForm' => $form]);
+        return $this->render('site_consultations', [
+            'site'        => $site,
+            'createForm'  => $form,
+            'wizardModel' => $form->siteCreateWizard,
+        ]);
     }
 
     /**
+     * @param int $version
      * @return string
      */
-    public function actionOpenslidesusers()
+    public function actionOpenslidesusers($version = 1)
     {
         \yii::$app->response->format = Response::FORMAT_RAW;
         \yii::$app->response->headers->add('Content-Type', 'text/csv');
@@ -338,8 +327,14 @@ class IndexController extends AdminBase
             }
         }
 
-        return $this->renderPartial('openslides_user_list', [
-            'users' => $users,
-        ]);
+        if ($version == 2) {
+            return $this->renderPartial('openslides2_user_list', [
+                'users' => $users,
+            ]);
+        } else {
+            return $this->renderPartial('openslides1_user_list', [
+                'users' => $users,
+            ]);
+        }
     }
 }

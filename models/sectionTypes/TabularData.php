@@ -4,10 +4,10 @@ namespace app\models\sectionTypes;
 
 use app\components\latex\Content;
 use app\components\latex\Exporter;
-use app\components\opendocument\Text;
 use app\models\exceptions\FormError;
 use app\views\pdfLayouts\IPDFLayout;
 use yii\helpers\Html;
+use \CatoTH\HTML2OpenDocument\Text;
 
 class TabularData extends ISectionType
 {
@@ -90,14 +90,14 @@ class TabularData extends ISectionType
         }
         $rows = static::getTabularDataRowsFromData($this->section->getSettings()->data);
         $data = json_decode($this->section->data, true);
-        $str  = '<dl class="tabularData table">';
+        $str  = '<dl class="tabularData table' . (!$isRight ? ' dl-horizontal' : '') . '">';
         foreach ($data['rows'] as $rowId => $rowData) {
             if (!isset($rows[$rowId])) {
                 continue;
             }
-            $str .= '<dt' . (!$isRight ? ' class="dl-horizontal"' : '') . '>';
+            $str .= '<dt>';
             $str .= Html::encode($rows[$rowId]->title) . ':';
-            $str .= '</dt><dd class="col-md-9">';
+            $str .= '</dt><dd>';
             $str .= Html::encode($rows[$rowId]->formatRow($rowData));
             $str .= '</dd>';
         }
@@ -127,9 +127,9 @@ class TabularData extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printMotionToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printMotionToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         if ($this->isEmpty()) {
             return;
@@ -151,8 +151,8 @@ class TabularData extends ISectionType
             }
             $y     = $pdf->getY();
             $text1 = '<strong>' . Html::encode($rows[$rowId]->title) . ':</strong>';
-
-            $text2 = Html::encode($rowData);  // @TODO sectionType-specific handling
+            $text2 = Exporter::encodeHTMLString($rows[$rowId]->formatRow($rowData));
+            
             $pdf->writeHTMLCell(45, '', 25, $y, $text1, 0, 0, 0, true, '', true);
             $pdf->writeHTMLCell(111, '', 75, '', $text2, 0, 1, 0, true, '', true);
             $pdf->Ln(3);
@@ -162,9 +162,9 @@ class TabularData extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         $this->printAmendmentToPDF($pdfLayout, $pdf);
     }
@@ -239,13 +239,17 @@ class TabularData extends ISectionType
     public function getMotionPlainText()
     {
         $data   = json_decode($this->section->data, true);
+        $type = $this->section->getSettings();
+        $rows = static::getTabularDataRowsFromData($type->data);
+
         $return = '';
         foreach ($data['rows'] as $rowId => $rowData) {
             if (!isset($rows[$rowId])) {
                 continue;
             }
             $return .= $rows[$rowId]->title . ': ';
-            $return .= $rowData . "\n"; // @TODO sectionType-specific handling
+            $return .= Exporter::encodeHTMLString($rows[$rowId]->formatRow($rowData));
+            $return .= "\n";
         }
         return $return;
     }
@@ -275,12 +279,16 @@ class TabularData extends ISectionType
                 continue;
             }
             if ($isRight) {
-                $content->textRight .= '\textbf{' . Exporter::encodePlainString($rows[$rowId]->title) . ':}' . "\\newline\n";
+                $content->textRight .= '\textbf{' . Exporter::encodePlainString($rows[$rowId]->title) . ':}';
+                $content->textRight .= "\\newline\n";
                 $content->textRight .= '\vspace{0.2cm}';
-                $content->textRight .= Exporter::encodePlainString($rowData) . "\\newline\n";
+                $content->textRight .= Exporter::encodePlainString($rowData);
+                $content->textRight .= "\\newline\n";
             } else {
-                $content->textMain .= '\textbf{' . Exporter::encodePlainString($rows[$rowId]->title) . ':}' . "\\newline\n";
-                $content->textMain .= Exporter::encodePlainString($rowData) . "\\newline\n";
+                $content->textMain .= '\textbf{' . Exporter::encodePlainString($rows[$rowId]->title) . ':}';
+                $content->textMain .= "\\newline\n";
+                $content->textMain .= Exporter::encodeHTMLString($rows[$rowId]->formatRow($rowData));
+                $content->textMain .= "\\newline\n";
             }
         }
         if ($isRight) {

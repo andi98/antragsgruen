@@ -23,11 +23,11 @@ $I->cantSeeCheckboxIsChecked("#personTypeOrga");
 $I->dontSee('JavaScript aktiviert sein');
 $I->see('Gremium, LAG...');
 $I->dontSee('Beschlussdatum');
-$I->dontSee('Kontaktperson');
+$I->dontSee('Ansprechperson');
 $I->selectOption('#personTypeOrga', \app\models\db\ISupporter::PERSON_ORGANIZATION);
 $I->dontSee('Gremium, LAG...');
 $I->see('Beschlussdatum');
-$I->see('Kontaktperson');
+$I->see('Ansprechperson');
 
 // Fill & Submit Form
 $I->wantTo('create a regular motion, but forgot the organization and resolution date');
@@ -59,12 +59,14 @@ $I->wantTo('make some changes to the motion');
 $I->fillField(['name' => 'sections[1]'], 'Testantrag 2');
 $I->executeJS('CKEDITOR.instances.sections_2_wysiwyg.setData("<p><strong>Another string</strong></p>");');
 $I->executeJS('CKEDITOR.instances.sections_3_wysiwyg.setData("<p><em>Italic is beautiful as well</em></p>");');
+$I->executeJS('$("#initiatorPrimaryName").removeAttr("required");');
 $I->fillField(['name' => 'Initiator[primaryName]'], '');
 $I->fillField(['name' => 'Initiator[contactEmail]'], 'test2@example.org');
 $I->fillField(['name' => 'Initiator[contactPhone]'], '+49-123-456789');
 $I->selectOption('#personTypeOrga', \app\models\db\ISupporter::PERSON_ORGANIZATION);
 $I->submitForm('#motionEditForm', [], 'save');
 
+$I->wait(1);
 $I->see('No valid name entered');
 $I->seeInField(['name' => 'Initiator[primaryName]'], '');
 $I->seeInField(['name' => 'Initiator[contactEmail]'], 'test2@example.org');
@@ -85,8 +87,8 @@ $I->see('My real name');
 
 $I->wantTo('confirm the submitted motion');
 $I->submitForm('#motionConfirmForm', [], 'confirm');
-$I->see(mb_strtoupper('Antrag eingereicht'), 'h1');
-$I->see('Du hast den Antrag eingereicht. Er ist jetzt sofort sichtbar.');
+$I->see(mb_strtoupper('Antrag veröffentlicht'), 'h1');
+$I->see('Du hast den Antrag veröffentlicht. Er ist jetzt sofort sichtbar.');
 
 $I->submitForm('#motionConfirmedForm', [], '');
 
@@ -114,5 +116,8 @@ $I->dontSee('+49-123-456789');
 $I->logout();
 $I->loginAsStdAdmin();
 $I->see('My real name');
+$I->dontSee('test2@example.org');
+$I->dontSee('+49-123-456789');
+$I->click('.contactShow');
 $I->see('test2@example.org');
 $I->see('+49-123-456789');

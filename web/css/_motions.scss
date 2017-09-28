@@ -163,6 +163,8 @@
           display: none;
         }
         .motionPrefix {
+          word-break: break-all;
+          word-wrap: break-word;
           width: 90px;
           float: left;
           left: 30px;
@@ -209,6 +211,10 @@
   }
 }
 
+.noMotionsYet {
+  font-style: italic;
+}
+
 .motionListAgenda {
   list-style-type: none;
   margin: 15px 0 0;
@@ -248,21 +254,22 @@
   li.agendaItem {
     border: solid 1px transparent; // Otherwise: strange behavior when moving items
     padding-left: 20px;
+    position: relative;
+
+    .delAgendaItem, .delAgendaItem:link, .delAgendaItem:visited {
+      color: $colorDelLink;
+      position: absolute;
+      top: 5px;
+      right: 10px;
+    }
 
     > div {
       margin-bottom: 5px;
       padding: 5px 10px 10px;
 
       > h3 {
-        position: relative;
         overflow: auto;
         padding: 2px;
-        .delAgendaItem, .delAgendaItem:link, .delAgendaItem:visited {
-          color: $colorDelLink;
-          position: absolute;
-          top: 0;
-          right: 0;
-        }
         html.no-touchevents & .delAgendaItem {
           visibility: hidden;
         }
@@ -488,6 +495,7 @@
       .lineNumber:after {
         content: attr(data-line-number);
         color: #C3C3C3;
+        font-size: $motionStdFontSize;
         font-style: normal;
         font-weight: normal;
         text-decoration: none;
@@ -499,6 +507,22 @@
         .lineNumber {
           left: $lineNumberOffset + -1 * ($fixedWidthTextListPadding + $fixedWidthTextStdPadding);
         }
+        ul, ol {
+          .lineNumber {
+            left: $lineNumberOffset + -1 * (2 * $fixedWidthTextListPadding + $fixedWidthTextStdPadding);
+          }
+          ul, ol {
+            .lineNumber {
+              left: $lineNumberOffset + -1 * (3 * $fixedWidthTextListPadding + $fixedWidthTextStdPadding);
+            }
+            ul, ol {
+              .lineNumber {
+                left: $lineNumberOffset + -1 * (4 * $fixedWidthTextListPadding + $fixedWidthTextStdPadding);
+              }
+            }
+          }
+        }
+
       }
 
       > blockquote {
@@ -575,6 +599,12 @@
             color: #bbccbb;
           }
         }
+      }
+      .movedParagraphHint {
+        font-style: italic;
+        font-size: 0.8em;
+        margin-top: 3px;
+        color: #bbccbb;
       }
     }
   }
@@ -675,7 +705,7 @@
   h3 {
     background: none;
     color: $colorLinksLight;
-    font-family: "Segoe UI", Frutiger, "Frutiger Linotype", "Dejavu sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: $bodyFont;
     font-size: 13px;
     font-weight: bold;
     line-height: 18px;
@@ -804,7 +834,143 @@ iframe.pdfViewer {
   height: 600px;
   border: none;
 }
-section.sectionType5 {
+
+.sectionType5 { // PDFs
   margin-left: -1px;
   margin-right: -1px;
+}
+
+.share_buttons {
+  &:after,
+  &:before {
+    content: " ";
+    display: table;
+  }
+  &:after {
+    clear: both;
+  }
+  ul {
+    padding: 0;
+    margin: 0;
+  }
+  li {
+    height: 30px;
+    display: inline-block;
+    margin-right: 14px;
+    overflow: hidden;
+    width: 103px;
+    &:last-child {
+      margin-right: 0;
+    }
+    a {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #fff;
+      position: relative;
+      display: block;
+      padding-left: 10px;
+      padding-right: 5px;
+      font-size: 12px;
+      line-height: 31px;
+      text-decoration: none;
+      border: 1px solid #ddd;
+      background-color: #fff;
+      &:hover {
+        background-color: #eee;
+      }
+    }
+    &.facebook {
+      a {
+        color: #247bbd;
+        padding-left: 5px;
+        .icon {
+          font-size: 17px;
+        }
+      }
+    }
+    &.twitter {
+      a {
+        color: #247bbd;
+        .icon {
+          font-size: 20px;
+        }
+      }
+    }
+  }
+}
+
+#amendmentMergeForm {
+  #motionTitlePrefix, .dropdown-toggle {
+    max-width: 230px;
+  }
+  .checkButtonRow {
+    text-align: center;
+    margin: 20px 0;
+  }
+  .otherAmendmentStatus {
+    .row {
+      margin-bottom: 15px;
+    }
+    .by {
+      display: block;
+      font-size: 0.8em;
+    }
+    .amendmentAjaxTooltip {
+      float: right;
+      color: gray;
+      margin-right: -15px;
+      margin-top: 7px;
+    }
+  }
+  .affectedParagraphs {
+    .paragraph.unmodified .affectedBlock {
+      display: none;
+    }
+    .paragraph.modified .unmodifiedVersion {
+      display: none;
+    }
+  }
+  .affectedBlock {
+    margin-top: 20px;
+
+    > textarea {
+      display: none;
+    }
+  }
+  .modifySelector {
+    margin-top: 15px;
+    label {
+      margin-right: 20px;
+      font-weight: normal;
+    }
+  }
+  .save-row {
+    text-align: center;
+  }
+  .saveholder {
+    .checkAmendmentCollissions {
+      display: none;
+    }
+  }
+}
+
+.amendmentCollissionsHolder {
+  .amendmentBy {
+    color: gray;
+  }
+  .amendmentOverrideBlock {
+    background-color: #f5f5f5;
+    margin: 15px -10px;
+    padding: 10px;
+    border: solid 1px #ddd;
+    border-radius: 4px;
+
+    > h3 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+
+    > textarea {
+      display: none;
+    }
+  }
 }

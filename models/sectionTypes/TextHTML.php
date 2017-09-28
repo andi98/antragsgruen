@@ -4,11 +4,11 @@ namespace app\models\sectionTypes;
 
 use app\components\HTMLTools;
 use app\components\latex\Content;
-use app\components\opendocument\Text;
 use app\models\db\AmendmentSection;
 use app\models\exceptions\FormError;
 use app\views\pdfLayouts\IPDFLayout;
 use yii\helpers\Html;
+use \CatoTH\HTML2OpenDocument\Text;
 
 class TextHTML extends ISectionType
 {
@@ -27,8 +27,10 @@ class TextHTML extends ISectionType
     public function getAmendmentFormField()
     {
         $this->section->getSettings()->maxLen = 0; // @TODO Dirty Hack
-        $fixedWidth                                 = $this->section->getSettings()->fixedWidth;
-        return $this->getTextAmendmentFormField(true, $this->section->dataRaw, $fixedWidth);
+        $fixedWidth                           = $this->section->getSettings()->fixedWidth;
+
+        $pre = ($this->section->dataRaw ? $this->section->dataRaw : $this->section->data);
+        return $this->getTextAmendmentFormField(true, $pre, $fixedWidth);
     }
 
     /**
@@ -38,7 +40,7 @@ class TextHTML extends ISectionType
     public function setMotionData($data)
     {
         $this->section->dataRaw = $data;
-        $this->section->data    = HTMLTools::cleanUntrustedHtml($data);
+        $this->section->data    = HTMLTools::correctHtmlErrors($data);
     }
 
 
@@ -50,7 +52,7 @@ class TextHTML extends ISectionType
     {
         /** @var AmendmentSection $section */
         $section          = $this->section;
-        $section->data    = HTMLTools::cleanUntrustedHtml($data['consolidated']);
+        $section->data    = HTMLTools::correctHtmlErrors($data['consolidated']);
         $section->dataRaw = $data['raw'];
     }
 
@@ -82,9 +84,9 @@ class TextHTML extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printMotionToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printMotionToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         if ($this->isEmpty()) {
             return;
@@ -95,6 +97,11 @@ class TextHTML extends ISectionType
         }
 
         $html = $this->section->data;
+        // instead of <span class="strike"></span> TCPDF can only handle <s></s>
+        // for striking through text
+        $pattern = '/<span class="strike">(.*)<\/span>/iUs';
+        $replace = '<s>${1}</s>';
+        $html    = preg_replace($pattern, $replace, $html);
         // Some umlaut characters with unusual UTF-8-encoding (0x61CC88 for "ü")
         // are not shown correctly in PDF => convert them to the normal encoding
         if (function_exists('normalizer_normalize')) {
@@ -105,9 +112,9 @@ class TextHTML extends ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf)
+    public function printAmendmentToPDF(IPDFLayout $pdfLayout, \FPDI $pdf)
     {
         $this->printMotionToPDF($pdfLayout, $pdf);
     }

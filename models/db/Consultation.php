@@ -5,21 +5,16 @@ namespace app\models\db;
 use app\components\MotionSorter;
 use app\components\UrlHelper;
 use app\models\amendmentNumbering\IAmendmentNumbering;
-use app\models\exceptions\DB;
 use app\models\exceptions\Internal;
-use app\models\exceptions\MailNotSent;
 use app\models\exceptions\NotFound;
 use app\models\SearchResult;
-use app\models\sitePresets\ISitePreset;
 use yii\db\ActiveRecord;
-use yii\helpers\Html;
 
 /**
  * @package app\models\db
  *
  * @property int $id
  * @property int $siteId
- * @property int $type
  * @property int $amendmentNumbering
  *
  * @property string $urlPath
@@ -30,6 +25,7 @@ use yii\helpers\Html;
  * @property string $eventDateTo
  * @property string $adminEmail
  * @property string $dateCreation
+ * @property string $dateDeletion
  * @property string $settings
  *
  * @property Site $site
@@ -74,7 +70,9 @@ class Consultation extends ActiveRecord
      */
     public static function tableName()
     {
-        return 'consultation';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'consultation';
     }
 
     /**
@@ -107,17 +105,34 @@ class Consultation extends ActiveRecord
     }
 
     /**
-     * @param int $motionId
+     * @param string|null $motionSlug
      * @return Motion|null
      */
-    public function getMotion($motionId)
+    public function getMotion($motionSlug)
     {
+        if (is_null($motionSlug)) {
+            return null;
+        }
         foreach ($this->motions as $motion) {
-            if ($motion->id == $motionId && $motion->status != Motion::STATUS_DELETED) {
+            if (is_numeric($motionSlug) && $motion->id == $motionSlug && $motion->status != Motion::STATUS_DELETED) {
+                return $motion;
+            }
+            if (!is_numeric($motionSlug) && $motion->slug == $motionSlug && $motion->status != Motion::STATUS_DELETED) {
                 return $motion;
             }
         }
         return null;
+    }
+
+    /**
+     * @return Motion|null
+     */
+    public function getForcedMotion()
+    {
+        if ($this->getSettings()->forceMotion === null) {
+            return null;
+        }
+        return $this->getMotion($this->getSettings()->forceMotion);
     }
 
     /**
@@ -227,6 +242,21 @@ class Consultation extends ActiveRecord
     }
 
     /**
+     * @param int $type
+     * @return UserNotification[]
+     */
+    public function getUserNotificationsType($type)
+    {
+        $notis = [];
+        foreach ($this->userNotifications as $userNotification) {
+            if ($userNotification->notificationType == $type) {
+                $notis[] = $userNotification;
+            }
+        }
+        return $notis;
+    }
+
+    /**
      * @param int $motionTypeId
      * @return ConsultationMotionType
      * @throws NotFound
@@ -317,54 +347,6 @@ class Consultation extends ActiveRecord
     }
 
     /**
-     * @param Site $site
-     * @param User $currentUser
-     * @param ISitePreset $preset
-     * @param int $type
-     * @param string $title
-     * @param string $subdomain
-     * @param int $openNow
-     * @return Consultation
-     * @throws DB
-     */
-    public static function createFromForm($site, $currentUser, $preset, $type, $title, $subdomain, $openNow)
-    {
-        $con                     = new Consultation();
-        $con->siteId             = $site->id;
-        $con->title              = $title;
-        $con->titleShort         = $title;
-        $con->type               = $type;
-        $con->urlPath            = $subdomain;
-        $con->adminEmail         = $currentUser->email;
-        $con->amendmentNumbering = 0;
-        $con->dateCreation       = date('Y-m-d H:i:s');
-
-        $settings                   = $con->getSettings();
-        $settings->maintainanceMode = !$openNow;
-        $con->setSettings($settings);
-
-        $preset->setConsultationSettings($con);
-
-        if (!$con->save()) {
-            throw new DB($con->getErrors());
-        }
-
-        $contactHtml               = nl2br(Html::encode($site->contact));
-        $legalText                 = new ConsultationText();
-        $legalText->consultationId = $con->id;
-        $legalText->category       = 'pagedata';
-        $legalText->textId         = 'legal';
-        $legalText->text           = str_replace('%CONTACT%', $contactHtml, \Yii::t('base', 'legal_template'));
-        if (!$legalText->save()) {
-            var_dump($legalText->getErrors());
-            die();
-        }
-
-
-        return $con;
-    }
-
-    /**
      * @param int $privilege
      * @return bool
      *
@@ -408,13 +390,41 @@ class Consultation extends ActiveRecord
      */
     public function getInvisibleMotionStati($withdrawnInvisible = false)
     {
-        $invisible = [Motion::STATUS_DELETED, Motion::STATUS_UNCONFIRMED, Motion::STATUS_DRAFT];
+        $invisible = [
+            IMotion::STATUS_DELETED,
+            IMotion::STATUS_UNCONFIRMED,
+            IMotion::STATUS_DRAFT,
+            IMotion::STATUS_COLLECTING_SUPPORTERS,
+            IMotion::STATUS_DRAFT_ADMIN,
+            IMotion::STATUS_WITHDRAWN_INVISIBLE,
+            IMotion::STATUS_MERGING_DRAFT_PRIVATE,
+            IMotion::STATUS_MERGING_DRAFT_PUBLIC,
+        ];
         if (!$this->getSettings()->screeningMotionsShown) {
-            $invisible[] = Motion::STATUS_SUBMITTED_UNSCREENED;
+            $invisible[] = IMotion::STATUS_SUBMITTED_UNSCREENED;
+            $invisible[] = IMotion::STATUS_SUBMITTED_UNSCREENED_CHECKED;
         }
         if ($withdrawnInvisible) {
-            $invisible[] = Motion::STATUS_WITHDRAWN;
+            $invisible[] = IMotion::STATUS_WITHDRAWN;
+            $invisible[] = IMotion::STATUS_MODIFIED;
+            $invisible[] = IMotion::STATUS_MODIFIED_ACCEPTED;
+            $invisible[] = IMotion::STATUS_PROCESSED;
         }
+        return $invisible;
+    }
+
+    /**
+     * @return int[]
+     */
+    public function getUnreadableStati()
+    {
+        $invisible = [
+            IMotion::STATUS_DELETED,
+            IMotion::STATUS_UNCONFIRMED,
+            IMotion::STATUS_DRAFT,
+            IMotion::STATUS_MERGING_DRAFT_PRIVATE,
+            IMotion::STATUS_MERGING_DRAFT_PUBLIC,
+        ];
         return $invisible;
     }
 
@@ -485,7 +495,7 @@ class Consultation extends ActiveRecord
                 continue;
             }
             $found = false;
-            foreach ($motion->sections as $section) {
+            foreach ($motion->getActiveSections() as $section) {
                 if (!$found && $section->getSectionType()->matchesFulltextSearch($text)) {
                     $found             = true;
                     $result            = new SearchResult();
@@ -502,12 +512,12 @@ class Consultation extends ActiveRecord
                     if (in_array($amend->status, $this->getInvisibleAmendmentStati())) {
                         continue;
                     }
-                    foreach ($amend->sections as $section) {
+                    foreach ($amend->getActiveSections() as $section) {
                         if (!$found && $section->getSectionType()->matchesFulltextSearch($text)) {
                             $found             = true;
                             $result            = new SearchResult();
                             $result->id        = 'amendment' . $amend->id;
-                            $result->typeTitle = 'Änderungsantrag';
+                            $result->typeTitle = \Yii::t('amend', 'amendment');
                             $result->type      = SearchResult::TYPE_AMENDMENT;
                             $result->title     = $amend->getTitle();
                             $result->link      = UrlHelper::createAmendmentUrl($amend, 'view', $backParams);
@@ -518,7 +528,7 @@ class Consultation extends ActiveRecord
             }
         }
         /*
-         * @TODO: - Kommentare
+         * @TODO: - Comments
          */
         return $results;
     }
@@ -532,32 +542,6 @@ class Consultation extends ActiveRecord
             return true;
         }
         return false;
-    }
-
-    /**
-     * @param string $mailSubject
-     * @param string $mailText
-     */
-    public function sendEmailToAdmins($mailSubject, $mailText)
-    {
-        $mails = explode(',', $this->adminEmail);
-        foreach ($mails as $mail) {
-            if (trim($mail) != '') {
-                try {
-                    \app\components\mail\Tools::sendWithLog(
-                        EMailLog::TYPE_MOTION_NOTIFICATION_ADMIN,
-                        $this->site,
-                        trim($mail),
-                        null,
-                        $mailSubject,
-                        $mailText
-                    );
-                } catch (MailNotSent $e) {
-                    $errMsg = \Yii::t('base', 'err_email_not_sent') . ': ' . $e->getMessage();
-                    \yii::$app->session->setFlash('error', $errMsg);
-                }
-            }
-        }
     }
 
     /**
@@ -611,5 +595,23 @@ class Consultation extends ActiveRecord
             }
         }
         return $result;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasHelpPage()
+    {
+        $text = ConsultationText::findOne(['consultationId' => $this->id, 'textId' => 'help']);
+        return ($text !== null);
+    }
+
+    /**
+     */
+    public function setDeleted()
+    {
+        $this->urlPath      = null;
+        $this->dateDeletion = date('Y-m-d H:i:s');
+        $this->save(false);
     }
 }

@@ -15,6 +15,7 @@ use yii\helpers\Html;
 $controller = $this->context;
 
 $this->title = Yii::t('motion', $mode == 'create' ? 'Start a Motion' : 'Edit Motion');
+$controller->layoutParams->robotsNoindex = true;
 $controller->layoutParams->addBreadcrumb($this->title);
 $controller->layoutParams->addBreadcrumb(\Yii::T('motion', 'confirm_bread'));
 
@@ -31,7 +32,11 @@ foreach ($motion->getSortedSections(true) as $section) {
         $right .= '</section>';
     } else {
         $main .= '<section class="motionTextHolder sectionType' . $section->getSettings()->type . '">';
-        $main .= '<h2 class="green">' . Html::encode($section->getSettings()->title) . '</h2>';
+        if ($section->getSettings()->type != \app\models\sectionTypes\PDF::TYPE_PDF &&
+            $section->getSettings()->type != \app\models\sectionTypes\PDF::TYPE_IMAGE
+        ) {
+            $main .= '<h3 class="green">' . Html::encode($section->getSettings()->title) . '</h3>';
+        }
         $main .= '<div class="consolidated">';
 
         $main .= $section->getSectionType()->getSimple(false);
@@ -74,7 +79,7 @@ echo Html::beginForm('', 'post', ['id' => 'motionConfirmForm']);
 echo '<div class="content">
         <div style="float: right;">
             <button type="submit" name="confirm" class="btn btn-success">
-                <span class="glyphicon glyphicon-ok-sign"></span> ' . \Yii::t('motion', 'button_submit') . '
+                <span class="glyphicon glyphicon-ok-sign"></span> ' . $motion->getSubmitButtonLabel() . '
             </button>
         </div>
         <div style="float: left;">

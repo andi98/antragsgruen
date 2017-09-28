@@ -36,7 +36,7 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
         $parClasses[] = 'commentsOpened';
     }
     $id = 'section_' . $section->sectionId . '_' . $paragraphNo;
-    echo '<section class="' . implode(' ', $parClasses) . '" id="' . $id . '">';
+    echo '<div class="' . implode(' ', $parClasses) . '" id="' . $id . '">';
 
 
     echo '<ul class="bookmarks">';
@@ -74,17 +74,19 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
     }
     echo '">';
     if ($section->getSettings()->fixedWidth || $hasLineNumbers) {
-        $linesArr = [];
-        foreach ($paragraph->lines as $line) {
+        foreach ($paragraph->lines as $i => $line) {
             if ($section->getSettings()->lineNumbers) {
                 /** @var int $lineNo */
                 $lineNoStr = '<span class="lineNumber" data-line-number="' . $lineNo++ . '"></span>';
                 $line      = str_replace('###LINENUMBER###', $lineNoStr, $line);
             }
-            $line       = str_replace('###FORCELINEBREAK###', '', $line);
-            $linesArr[] = $line;
+            $line   = str_replace('<br>', '', $line);
+            $first3 = substr($line, 0, 3);
+            if ($i > 0 && !in_array($first3, ['<ol', '<ul', '<p>', '<di'])) {
+                echo '<br>';
+            }
+            echo $line;
         }
-        echo implode('<br>', $linesArr);
     } else {
         echo $paragraph->origStr;
     }
@@ -100,14 +102,14 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
         echo '<div class="preamble"><div>';
         echo '<h3>' . \Yii::t('amend', 'amendment') . ' ' . Html::encode($amendment->titlePrefix) . '</h3>';
         echo ', ' . \Yii::t('amend', 'initiated_by') . ': ' . Html::encode($amendment->getInitiatorsStr());
-        $amParas = $amendment->getChangedParagraphs($motion->sections, true);
+        $amParas = $amendment->getChangedParagraphs($motion->getActiveSections(), true);
         if (count($amParas) > 1) {
             echo '<div class="moreAffected">';
             echo str_replace('%num%', count($amParas), \Yii::t('amend', 'affects_x_paragraphs'));
             echo '</div>';
         }
         echo '</div></div>';
-        echo $amendmentSection->strDiff;
+        echo str_replace('###LINENUMBER###', '', $amendmentSection->strDiff);
         echo '</div>';
 
         // Seems to be necessary to limit memory consumption
@@ -140,6 +142,11 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
                 $form              = new \app\models\forms\CommentForm();
                 $form->paragraphNo = $paragraphNo;
                 $form->sectionId   = $section->sectionId;
+                $user              = User::getCurrentUser();
+                if ($user) {
+                    $form->name  = $user->name;
+                    $form->email = $user->email;
+                }
             }
 
             $screeningQueue = 0;
@@ -164,7 +171,7 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
             }
 
             if ($section->getMotion()->motionType->getCommentPolicy()->checkCurrUser()) {
-                LayoutHelper::showCommentForm($form, $motion->getConsultation(), $section->sectionId, $paragraphNo);
+                LayoutHelper::showCommentForm($form, $motion->getMyConsultation(), $section->sectionId, $paragraphNo);
             } elseif ($section->getMotion()->motionType->getCommentPolicy()->checkCurrUser(true, true)) {
                 echo '<div class="alert alert-info" style="margin: 19px;" role="alert">
         <span class="glyphicon glyphicon-log-in"></span>' . \Yii::t('amend', 'comments_please_log_in') . '</div>';
@@ -174,5 +181,5 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
     }
 
 
-    echo '</section>';
+    echo '</div>';
 }

@@ -28,11 +28,9 @@ $I->wantTo('restrict login');
 $I->loginAsStdAdmin();
 $I->gotoStdAdminPage()->gotoSiteAccessPage();
 
-$I->dontSeeElement('#accountsEditForm');
 $I->dontSeeElement('#accountsCreateForm');
 $I->checkOption('input[name=managedUserAccounts]');
 $I->wait(1);
-$I->dontSeeElement('#accountsEditForm');
 $I->seeElement('#accountsCreateForm');
 
 
@@ -56,7 +54,6 @@ $I->wantTo('add my test user to the list (but make a mistake)');
 $I->loginAsStdAdmin();
 $I->gotoStdAdminPage()->gotoSiteAccessPage();
 
-$I->dontSeeElement('#accountsEditForm');
 $I->seeElement('#accountsCreateForm');
 
 $I->fillField('#emailAddresses', "testuser@example.org\ntestuser2@example.org");
@@ -78,8 +75,7 @@ $I->wantTo('add my test users to the list');
 
 $I->fillField('#emailText', '%LINK% / %ACCOUNT%');
 $I->submitForm('#accountsCreateForm', [], 'addUsers');
-$I->see('2 BenutzerInnen wurden eingetragen.', '.showManagedUsers');
-$I->seeElement('#accountsEditForm');
+$I->see('2 Benutzer*innen wurden eingetragen.', '.showManagedUsers');
 $I->seeElement('#accountsCreateForm');
 
 
@@ -89,7 +85,7 @@ $I->fillField('#emailAddresses', "testuser2@example.org");
 $I->fillField('#names', "Test user");
 $I->submitForm('#accountsCreateForm', [], 'addUsers');
 
-$I->see('Folgende BenutzerInnen hatten bereits Zugriff: testuser2@example.org', '.showManagedUsers');
+$I->see('Folgende Benutzer*innen hatten bereits Zugriff: testuser2@example.org', '.showManagedUsers');
 $I->see('testuser@example.org', '.accountListTable');
 
 $I->logout();

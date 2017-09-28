@@ -107,7 +107,41 @@ $I->wantTo('check if the amendment is correctly displayed');
 
 $I->gotoConsultationHome();
 $I->click('.amendment' . AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
-$I->see('Bavaria ipsum dolor', 'del');
-$I->see('Test 789', 'ins');
+$I->see('Bavaria ipsum dolor', '.deleted');
+$I->see('Test 789', '.inserted');
 $I->dontSee('Test 456');
 $I->dontSee('Test 123');
+
+
+
+$I->wantTo('edit the amendment as admin');
+
+$I->gotoMotionList()->gotoAmendmentEdit(AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
+$I->wait(1);
+$I->dontSeeElement('#amendmentTextEditHolder');
+$I->executeJS('$("#amendmentTextEditCaller button").click()');
+$I->wait(1);
+$I->seeElement('#amendmentTextEditHolder');
+
+$I->see('Test 789', '#sections_2_0_wysiwyg');
+$I->click('#section_holder_2_0 .modifiedActions .revert');
+$I->dontSee('Test 789', '#sections_2_0_wysiwyg');
+$I->seeElement('#section_holder_2_0.modifyable');
+$I->seeElement('#section_holder_2_1.modifyable');
+
+$I->click('#section_holder_2_1');
+$I->wait(1);
+$I->dontSeeElement('#section_holder_2_0.modifyable');
+$I->dontSeeElement('#section_holder_2_0.modified');
+$I->dontSeeElement('#section_holder_2_1.modifyable');
+$I->seeElement('#section_holder_2_1.modified');
+
+$I->executeJS('CKEDITOR.instances.sections_2_1_wysiwyg.setData("<p>Test 456</p>");');
+$I->see('Test 456');
+
+$I->submitForm('#amendmentUpdateForm', [], 'save');
+
+$I->see('Gespeichert.');
+
+$I->see('Test 456', '.motionTextHolder .inserted');
+$I->see('Auffi Gamsbart nimma de Sepp', '.motionTextHolder .deleted');

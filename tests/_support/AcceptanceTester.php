@@ -1,5 +1,6 @@
 <?php
 use app\tests\_pages\AdminIndexPage;
+use app\tests\_pages\AdminMotionListPage;
 use app\tests\_pages\AmendmentPage;
 use app\tests\_pages\ConsultationHomePage;
 use app\tests\_pages\MotionPage;
@@ -23,17 +24,20 @@ class AcceptanceTester extends \Codeception\Actor
 {
     use _generated\AcceptanceTesterActions;
 
-    const FIRST_FREE_MOTION_ID              = 115;
-    const FIRST_FREE_MOTION_TITLE_PREFIX    = 'A6';
+    const FIRST_FREE_MOTION_ID              = 118;
+    const FIRST_FREE_MOTION_TITLE_PREFIX    = 'A8';
     const FIRST_FREE_AMENDMENT_TITLE_PREFIX = 'Ä8';
-    const FIRST_FREE_MOTION_SECTION         = 29;
-    const FIRST_FREE_AMENDMENT_ID           = 277;
+    const FIRST_FREE_MOTION_SECTION         = 33;
+    const FIRST_FREE_AMENDMENT_ID           = 279;
     const FIRST_FREE_AGENDA_ITEM_ID         = 15;
     const FIRST_FREE_COMMENT_ID             = 1;
+    const FIRST_FREE_MOTION_TYPE            = 11;
+    const FIRST_FREE_CONSULTATION_ID        = 8;
 
     public static $ACCEPTED_HTML_ERRORS = [
         'Bad value “popup” for attribute “rel”',
-        'CKEDITOR'
+        'CKEDITOR',
+        'autocomplete'
     ];
 
     /**
@@ -59,65 +63,85 @@ class AcceptanceTester extends \Codeception\Actor
 
     /**
      * @param bool $check
-     * @param int $motionId
+     * @param string $motionSlug
      * @return MotionPage
      */
-    public function gotoMotion($check = true, $motionId = 2)
+    public function gotoMotion($check = true, $motionSlug = '2')
     {
+        if (is_numeric($motionSlug)) {
+            /** @var \app\models\db\Motion $motion */
+            $motion     = \app\models\db\Motion::findOne($motionSlug);
+            $motionSlug = $motion->getMotionSlug();
+        }
         $page = MotionPage::openBy(
             $this,
             [
                 'subdomain'        => 'stdparteitag',
                 'consultationPath' => 'std-parteitag',
-                'motionId'         => $motionId,
+                'motionSlug'       => $motionSlug,
             ]
         );
         if ($check) {
             $this->seeElement('.motionData');
         }
+        $this->wait(0.1);
         return $page;
     }
 
     /**
      * @param bool $check
-     * @param int $motionId
+     * @param string $motionSlug
      * @param int $amendmentId
-     * @return MotionPage
+     * @return AmendmentPage
      */
-    public function gotoAmendment($check = true, $motionId = 2, $amendmentId = 1)
+    public function gotoAmendment($check = true, $motionSlug = '2', $amendmentId = 1)
     {
         $page = AmendmentPage::openBy(
             $this,
             [
                 'subdomain'        => 'stdparteitag',
                 'consultationPath' => 'std-parteitag',
-                'motionId'         => $motionId,
+                'motionSlug'       => $motionSlug,
                 'amendmentId'      => $amendmentId
             ]
         );
         if ($check) {
             $this->seeElement('.motionData');
         }
+        $this->wait(0.1);
         return $page;
     }
 
     /**
-     * @return AdminIndexPage
-     */
-    public function loginAndGotoStdAdminPage()
-    {
-        $this->gotoConsultationHome();
-        $this->loginAsStdAdmin();
-        return $this->gotoStdAdminPage();
-    }
-
-    /**
-     * @param bool $check
      * @param string $subdomain
      * @param string $path
      * @return AdminIndexPage
      */
-    public function gotoStdAdminPage($check = true, $subdomain = 'stdparteitag', $path = 'std-parteitag')
+    public function loginAndGotoStdAdminPage($subdomain = 'stdparteitag', $path = 'std-parteitag')
+    {
+        $this->gotoConsultationHome(false, $subdomain, $path);
+        $this->loginAsStdAdmin();
+        return $this->gotoStdAdminPage($subdomain, $path);
+    }
+
+    /**
+     * @param string $subdomain
+     * @param string $path
+     * @return AdminMotionListPage
+     */
+    public function loginAndGotoMotionList($subdomain = 'stdparteitag', $path = 'std-parteitag')
+    {
+        $this->gotoConsultationHome(false, $subdomain, $path);
+        $this->loginAsStdAdmin();
+        return $this->gotoMotionList();
+    }
+
+    /**
+     * @param string $subdomain
+     * @param string $path
+     * @return AdminIndexPage
+     */
+    public function gotoStdAdminPage($subdomain = 'stdparteitag', $path = 'std-parteitag')
     {
         $page = AdminIndexPage::openBy(
             $this,
@@ -130,30 +154,55 @@ class AcceptanceTester extends \Codeception\Actor
     }
 
     /**
-     *
+     * @return AdminMotionListPage
      */
-    public function loginAsStdAdmin()
+    public function gotoMotionList()
+    {
+        $this->click('#motionListLink');
+        $this->see(mb_strtoupper('Liste: Anträge, Änderungsanträge'), 'h1');
+        return new AdminMotionListPage($this);
+    }
+
+    /**
+     * @param $username
+     * @param $password
+     * @return $this
+     */
+    protected function loginWithData($username, $password)
     {
         $this->see('LOGIN', '#loginLink');
         $this->click('#loginLink');
 
         $this->see('LOGIN', 'h1');
-        $this->fillField('#username', 'testadmin@example.org');
-        $this->fillField('#passwordInput', 'testadmin');
+        $this->fillField('#username', $username);
+        $this->fillField('#passwordInput', $password);
         $this->submitForm('#usernamePasswordForm', [], 'loginusernamepassword');
+
+        return $this;
     }
+
+    /**
+     * @return $this
+     */
+    public function loginAsStdAdmin()
+    {
+        return $this->loginWithData('testadmin@example.org', 'testadmin');
+    }
+
+    /**
+     * @return $this
+     */
+    public function loginAsConsultationAdmin()
+    {
+        return $this->loginWithData('consultationadmin@example.org', 'consultationadmin');
+    }
+
     /**
      *
      */
     public function loginAsGlobalAdmin()
     {
-        $this->see('LOGIN', '#loginLink');
-        $this->click('#loginLink');
-
-        $this->see('LOGIN', 'h1');
-        $this->fillField('#username', 'globaladmin@example.org');
-        $this->fillField('#passwordInput', 'testadmin');
-        $this->submitForm('#usernamePasswordForm', [], 'loginusernamepassword');
+        return $this->loginWithData('globaladmin@example.org', 'testadmin');
     }
 
     /**
@@ -161,13 +210,23 @@ class AcceptanceTester extends \Codeception\Actor
      */
     public function loginAsStdUser()
     {
-        $this->see('LOGIN', '#loginLink');
-        $this->click('#loginLink');
+        return $this->loginWithData('testuser@example.org', 'testuser');
+    }
 
-        $this->see('LOGIN', 'h1');
-        $this->fillField('#username', 'testuser@example.org');
-        $this->fillField('#passwordInput', 'testuser');
-        $this->submitForm('#usernamePasswordForm', [], 'loginusernamepassword');
+    /**
+     * @return $this
+     */
+    public function loginAsFixedDataUser()
+    {
+        return $this->loginWithData('fixeddata@example.org', 'testuser');
+    }
+
+    /**
+     * @return $this
+     */
+    public function loginAsFixedDataAdmin()
+    {
+        return $this->loginWithData('fixedadmin@example.org', 'testadmin');
     }
 
     /**

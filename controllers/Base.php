@@ -2,6 +2,7 @@
 
 namespace app\controllers;
 
+use app\components\HTMLTools;
 use app\components\UrlHelper;
 use app\models\exceptions\Internal;
 use app\models\settings\AntragsgruenApp;
@@ -51,43 +52,130 @@ class Base extends Controller
         \yii::$app->response->headers->add('X-Xss-Protection', '1');
         \yii::$app->response->headers->add('X-Content-Type-Options', 'nosniff');
         \yii::$app->response->headers->add('X-Frame-Options', 'sameorigin');
-        if (parent::beforeAction($action)) {
-            $params = \Yii::$app->request->resolve();
-            /** @var AntragsgruenApp $appParams */
-            $appParams = \Yii::$app->params;
 
-            if ($appParams->siteSubdomain) {
-                $consultation = (isset($params[1]['consultationPath']) ? $params[1]['consultationPath'] : '');
-                $this->loadConsultation($appParams->siteSubdomain, $consultation);
-                if ($this->site) {
-                    $this->layoutParams->mainCssFile = $this->site->getSettings()->siteLayout;
-                }
-            } elseif (isset($params[1]['subdomain'])) {
-                $consultation = (isset($params[1]['consultationPath']) ? $params[1]['consultationPath'] : '');
-                $this->loadConsultation($params[1]['subdomain'], $consultation);
-                if ($this->site) {
-                    $this->layoutParams->mainCssFile = $this->site->getSettings()->siteLayout;
-                }
-            } elseif (get_class($this) != ManagerController::class && !$appParams->multisiteMode) {
-                $this->showErrorpage(500, \Yii::t('base', 'err_no_site_internal'));
-            }
-
-            // Login and Mainainance mode is always allowed
-            if (get_class($this) == UserController::class) {
-                return true;
-            }
-            $allowedActions = ['maintainance', 'help', 'legal', 'privacy'];
-            if (get_class($this) == ConsultationController::class && in_array($action->id, $allowedActions)) {
-                return true;
-            }
-
-            if ($this->testMaintainanceMode() || $this->testSiteForcedLogin()) {
-                return false;
-            }
-            return true;
-        } else {
+        if (!parent::beforeAction($action)) {
             return false;
         }
+
+        $params = \Yii::$app->request->resolve();
+        /** @var AntragsgruenApp $appParams */
+        $appParams = \Yii::$app->params;
+
+        $inManager = (get_class($this) == ManagerController::class);
+        $inInstaller = (get_class($this) == InstallationController::class);
+
+        if ($appParams->siteSubdomain) {
+            if (strpos($appParams->siteSubdomain, 'xn--') === 0) {
+                HTMLTools::loadNetIdna2();
+                $idna      = new \Net_IDNA2();
+                $subdomain = $idna->decode($appParams->siteSubdomain);
+            } else {
+                $subdomain = $appParams->siteSubdomain;
+            }
+
+            $consultation = (isset($params[1]['consultationPath']) ? $params[1]['consultationPath'] : '');
+            $this->loadConsultation($subdomain, $consultation);
+            if ($this->site) {
+                $this->layoutParams->setLayout($this->site->getSettings()->siteLayout);
+            } else {
+                $this->layoutParams->setLayout(Layout::DEFAULT_LAYOUT);
+            }
+        } elseif (isset($params[1]['subdomain'])) {
+            if (strpos($params[1]['subdomain'], 'xn--') === 0) {
+                HTMLTools::loadNetIdna2();
+                $idna      = new \Net_IDNA2();
+                $subdomain = $idna->decode($params[1]['subdomain']);
+            } else {
+                $subdomain = $params[1]['subdomain'];
+            }
+
+            $consultation = (isset($params[1]['consultationPath']) ? $params[1]['consultationPath'] : '');
+            $this->loadConsultation($subdomain, $consultation);
+            if ($this->site) {
+                $this->layoutParams->setLayout($this->site->getSettings()->siteLayout);
+            } else {
+                $this->layoutParams->setLayout(Layout::DEFAULT_LAYOUT);
+            }
+        } elseif (!($inInstaller || $inManager) && !$appParams->multisiteMode) {
+            $this->layoutParams->setLayout(Layout::DEFAULT_LAYOUT);
+            $this->showErrorpage(500, \Yii::t('base', 'err_no_site_internal'));
+        } else {
+            $this->layoutParams->setLayout(Layout::DEFAULT_LAYOUT);
+        }
+
+        // Login and Mainainance mode is always allowed
+        if (get_class($this) == UserController::class) {
+            return true;
+        }
+        $allowedActions = ['maintenance', 'help', 'legal', 'privacy'];
+        if (get_class($this) == ConsultationController::class && in_array($action->id, $allowedActions)) {
+            return true;
+        }
+
+        if ($this->testMaintenanceMode() || $this->testSiteForcedLogin()) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @param array|string $url
+     * @param int $statusCode
+     * @return mixed
+     * @throws \yii\base\ExitException
+     */
+    public function redirect($url, $statusCode = 302)
+    {
+        $response = parent::redirect($url, $statusCode);
+        \Yii::$app->end();
+        return $response;
+    }
+
+    /**
+     * @param string $name
+     * @return bool
+     */
+    protected function isPostSet($name)
+    {
+        $post = \Yii::$app->request->post();
+        return isset($post[$name]);
+    }
+
+    /**
+     * @param string $name
+     * @return bool
+     */
+    protected function isGetSet($name)
+    {
+        $get = \Yii::$app->request->get();
+        return isset($get[$name]);
+    }
+
+    /**
+     * @param string $name
+     * @return bool
+     */
+    public function isRequestSet($name)
+    {
+        return $this->isPostSet($name) || $this->isGetSet($name);
+    }
+
+    /**
+     * @param string $name
+     * @param null|mixed $default
+     * @return mixed
+     */
+    public function getRequestValue($name, $default = null)
+    {
+        $post = \Yii::$app->request->post();
+        if (isset($post[$name])) {
+            return $post[$name];
+        }
+        $get = \Yii::$app->request->get();
+        if (isset($get[$name])) {
+            return $get[$name];
+        }
+        return $default;
     }
 
     /**
@@ -135,7 +223,9 @@ class Base extends Controller
      */
     public function getParams()
     {
-        return \Yii::$app->params;
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app;
     }
 
     /**
@@ -159,7 +249,7 @@ class Base extends Controller
     /**
      * @return bool
      */
-    public function testMaintainanceMode()
+    public function testMaintenanceMode()
     {
         if ($this->consultation == null) {
             return false;
@@ -167,8 +257,8 @@ class Base extends Controller
         /** @var \app\models\settings\Consultation $settings */
         $settings = $this->consultation->getSettings();
         $admin    = User::currentUserHasPrivilege($this->consultation, User::PRIVILEGE_CONSULTATION_SETTINGS);
-        if ($settings->maintainanceMode && !$admin) {
-            $this->redirect(UrlHelper::createUrl('consultation/maintainance'));
+        if ($settings->maintenanceMode && !$admin) {
+            $this->redirect(UrlHelper::createUrl('consultation/maintenance'));
             return true;
         }
         return false;
@@ -206,8 +296,8 @@ class Base extends Controller
     public function forceLogin()
     {
         if (\Yii::$app->user->getIsGuest()) {
-            $currUrl = \yii::$app->request->url;
-            $this->redirect(UrlHelper::createLoginUrl($currUrl));
+            $loginUrl = UrlHelper::createUrl(['user/login', 'backUrl' => \yii::$app->request->url]);
+            $this->redirect($loginUrl);
             \yii::$app->end();
         }
     }
@@ -261,20 +351,22 @@ class Base extends Controller
     /**
      * @param $status
      * @param $message
-     * @return string
      * @throws \yii\base\ExitException
      */
     protected function showErrorpage($status, $message)
     {
+        if ($this->layoutParams->hooks === null) {
+            $this->layoutParams->setLayout(Layout::DEFAULT_LAYOUT);
+        }
         $this->layoutParams->robotsNoindex = true;
-        echo $this->render(
+        Yii::$app->response->statusCode    = $status;
+        Yii::$app->response->content       = $this->render(
             '@app/views/errors/error',
             [
                 "message" => $message
             ]
         );
-        Yii::$app->end($status);
-        return '';
+        Yii::$app->end();
     }
 
     /**
@@ -283,11 +375,7 @@ class Base extends Controller
     protected function consultationNotFound()
     {
         $url     = Html::encode($this->getParams()->domainPlain);
-        $message = 'Die angegebene Veranstaltung wurde nicht gefunden. ' .
-            'Höchstwahrscheinlich liegt das an einem Tippfehler in der Adresse im Browser.<br>
-					<br>
-					Auf der <a href="' . $url . '">Antragsgrün-Startseite</a> ' .
-            'siehst du rechts eine Liste der aktiven Veranstaltungen.';
+        $message = str_replace('%URL%', $url, \Yii::t('base', 'err_cons_404'));
         $this->showErrorpage(404, $message);
     }
 
@@ -296,11 +384,7 @@ class Base extends Controller
      */
     protected function consultationError()
     {
-        $message = "Leider existiert die aufgerufene Seite nicht. " .
-            "Falls du der Meinung bist, dass das ein Fehler ist, " .
-            "melde dich bitte per E-Mail (info@antragsgruen.de) bei uns.";
-
-        $this->showErrorpage(500, $message);
+        $this->showErrorpage(500, \Yii::t('base', 'err_site_404'));
     }
 
     /**
@@ -313,25 +397,18 @@ class Base extends Controller
         $subdomain      = strtolower($this->site->subdomain);
 
         if (strtolower($this->consultation->site->subdomain) != $subdomain) {
-            Yii::$app->user->setFlash(
-                "error",
-                "Fehlerhafte Parameter - " .
-                "die Veranstaltung gehört nicht zur Veranstaltungsreihe."
-            );
+            Yii::$app->user->setFlash("error", \Yii::t('base', 'err_cons_not_site'));
             $this->redirect(UrlHelper::createUrl('consultation/index'));
-            Yii::$app->end();
         }
 
-        if (is_object($checkMotion) && strtolower($checkMotion->getConsultation()->urlPath) != $consultationId) {
-            Yii::$app->session->setFlash('error', 'Der Antrag gehört nicht zur Veranstaltung.');
+        if (is_object($checkMotion) && strtolower($checkMotion->getMyConsultation()->urlPath) != $consultationId) {
+            Yii::$app->session->setFlash('error', \Yii::t('motion', 'err_not_found'));
             $this->redirect(UrlHelper::createUrl('consultation/index'));
-            Yii::$app->end();
         }
 
         if ($checkAmendment != null && ($checkMotion == null || $checkAmendment->motionId != $checkMotion->id)) {
-            Yii::$app->session->setFlash('error', 'Der Änderungsantrag gehört nicht zum Antrag.');
+            Yii::$app->session->setFlash('error', \Yii::t('base', 'err_amend_not_consult'));
             $this->redirect(UrlHelper::createUrl('consultation/index'));
-            Yii::$app->end();
         }
     }
 
@@ -347,7 +424,7 @@ class Base extends Controller
         if (is_null($this->site)) {
             $this->site = Site::findOne(['subdomain' => $subdomain]);
         }
-        if (is_null($this->site)) {
+        if (is_null($this->site) || $this->site->status == Site::STATUS_DELETED || $this->site->dateDeletion !== null) {
             $this->consultationNotFound();
         }
 
@@ -358,7 +435,7 @@ class Base extends Controller
         if (is_null($this->consultation)) {
             $this->consultation = Consultation::findOne(['urlPath' => $consultationId, 'siteId' => $this->site->id]);
         }
-        if (is_null($this->consultation)) {
+        if (is_null($this->consultation) || $this->consultation->dateDeletion !== null) {
             $this->consultationNotFound();
         } else {
             Consultation::setCurrent($this->consultation);

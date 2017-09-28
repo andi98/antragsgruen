@@ -1,6 +1,6 @@
 <?php
 
-use \app\components\opendocument\Spreadsheet;
+use CatoTH\HTML2OpenDocument\Spreadsheet;
 use app\components\StringSplitter;
 use app\components\UrlHelper;
 use app\models\db\Amendment;
@@ -23,17 +23,10 @@ $DEBUG = false;
 /** @var \app\models\settings\AntragsgruenApp $params */
 $params = \yii::$app->params;
 
-$tmpZipFile   = $params->tmpDir . uniqid('zip-');
-$templateFile = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'OpenOffice-Template.ods';
-copy($templateFile, $tmpZipFile);
-
-$zip = new ZipArchive();
-if ($zip->open($tmpZipFile) !== true) {
-    die("cannot open <$tmpZipFile>\n");
-}
-
-$content = $zip->getFromName('content.xml');
-$doc     = new Spreadsheet($content);
+$doc = new Spreadsheet([
+    'tmpPath'   => $params->tmpDir,
+    'trustHtml' => true,
+]);
 
 $currCol = 0;
 
@@ -69,7 +62,7 @@ $fill = function ($cellAttributes, $textAttributes) use ($doc, &$row, $colLimit)
 
 foreach ($items as $item) {
     if ($item instanceof ConsultationAgendaItem) {
-        $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_HTML, $item->getShownCode(true));
+        $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_TEXT, $item->getShownCode(true));
         $fill (['fo:background-color' => agendaColor], []);
     } else {
         if ($item instanceof Motion || $item instanceof Amendment) {
@@ -91,11 +84,11 @@ foreach ($items as $item) {
             $name      = $initiator->getNameWithOrga();
             $firstName = StringSplitter::first([' '], mb_substr($name, 0, 4) == 'Dr. ' ? mb_substr($name, 4) : $name);
             if ($item instanceof Motion) {
-                $doc->setCell($row, $COL_TITLE, Spreadsheet::TYPE_HTML, $item->title);
+                $doc->setCell($row, $COL_TITLE, Spreadsheet::TYPE_TEXT, $item->title);
                 $fill ([], ['fo:color' => motionColor]);
             }
-            $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_HTML, $prefix);
-            $doc->setCell($row, $COL_INITIATOR, Spreadsheet::TYPE_HTML, $name);
+            $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_TEXT, $prefix);
+            $doc->setCell($row, $COL_INITIATOR, Spreadsheet::TYPE_TEXT, $name);
             $mailbody = str_replace(['%MOTION%', '%NAME%'], [$body, $firstName], \Yii::t('export', 'mail_body'));
             $href     = 'mailto:' . $email . '?subject=' . $prefix . ': ' . $title . '&body=' . rawurlencode($mailbody);
             $doc->setCell($row, $COL_EMAIL, Spreadsheet::TYPE_LINK, ['href' => $href, 'text' => $email]);
@@ -107,22 +100,11 @@ foreach ($items as $item) {
             $linkParams = ['href' => UrlHelper::absolutizeLink($viewUrl), 'text' => \Yii::t('export', 'motion')];
             $doc->setCell($row, $COL_LINK, Spreadsheet::TYPE_LINK, $linkParams);
         } else { // null
-            $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_HTML, \Yii::t('export', 'misc'));
+            $doc->setCell($row, $COL_PREFIX, Spreadsheet::TYPE_TEXT, \Yii::t('export', 'misc'));
             $fill (['fo:background-color' => agendaColor], []);
         }
     }
     $row++;
 }
 
-$content = $doc->create();
-
-if ($DEBUG) {
-    $doc->debugOutput();
-}
-
-$zip->deleteName('content.xml');
-$zip->addFromString('content.xml', $content);
-$zip->close();
-
-readfile($tmpZipFile);
-unlink($tmpZipFile);
+echo $doc->finishAndGetDocument();

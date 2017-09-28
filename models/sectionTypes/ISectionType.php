@@ -1,14 +1,16 @@
 <?php
+
 namespace app\models\sectionTypes;
 
 use app\components\HTMLTools;
 use app\components\latex\Content;
-use app\components\opendocument\Text;
 use app\controllers\Base;
+use app\models\db\AmendmentSection;
 use app\models\db\IMotionSection;
 use app\models\exceptions\FormError;
 use app\models\forms\CommentForm;
 use app\views\pdfLayouts\IPDFLayout;
+use CatoTH\HTML2OpenDocument\Text;
 use yii\helpers\Html;
 
 abstract class ISectionType
@@ -72,15 +74,18 @@ abstract class ISectionType
             $str .= '</div>';
         }
 
-        $str .= '<textarea name="sections[' . $type->id . ']"  id="sections_' . $type->id . '" ' .
-            'title="' . Html::encode($type->title) . '">';
+        $str .= '<textarea name="sections[' . $type->id . ']"  id="sections_' . $type->id . '" ';
+        $str .= 'title="' . Html::encode($type->title) . '">';
         $str .= Html::encode($this->section->data) . '</textarea>';
         $str .= '<div class="texteditor boxed';
         if ($fixedWidth) {
             $str .= ' fixedWidthFont';
         }
-        $str .= '" id="' . $htmlId . '_wysiwyg" ' .
-            'title="' . Html::encode($type->title) . '">';
+        $str .= '" id="' . $htmlId . '_wysiwyg" ';
+        if (in_array('strike', $type->getForbiddenMotionFormattings())) {
+            $str .= 'data-no-strike="1" ';
+        }
+        $str .= 'title="' . Html::encode($type->title) . '">';
         $str .= $this->section->data;
         $str .= '</div>';
 
@@ -104,9 +109,12 @@ abstract class ISectionType
      */
     protected function getTextAmendmentFormField($fullHtml, $data, $fixedWidth)
     {
-        $type     = $this->section->getSettings();
-        $nameBase = 'sections[' . $type->id . ']';
-        $htmlId   = 'sections_' . $type->id;
+        /** @var AmendmentSection $section */
+        $section      = $this->section;
+        $type         = $section->getSettings();
+        $nameBase     = 'sections[' . $type->id . ']';
+        $htmlId       = 'sections_' . $type->id;
+        $originalHtml = ($section->getOriginalMotionSection() ? $section->getOriginalMotionSection()->data : '');
 
         $str = '<div class="form-group wysiwyg-textarea" id="section_holder_' . $type->id . '"';
         $str .= ' data-max-len="' . $type->maxLen . '"';
@@ -121,10 +129,17 @@ abstract class ISectionType
         if ($fixedWidth) {
             $str .= ' fixedWidthFont';
         }
-        $str .= '" data-track-changed="1" ' .
+        $str .= '" data-track-changed="1" data-enter-mode="br" data-no-strike="1" ' .
+            'data-original-html="' . Html::encode($originalHtml) . '" ' .
             'id="' . $htmlId . '_wysiwyg" title="' . Html::encode($type->title) . '">';
-        $str .= HTMLTools::prepareHTMLForCkeditor($this->section->dataRaw);
+        $str .= HTMLTools::prepareHTMLForCkeditor($data);
         $str .= '</div>';
+
+        if (HTMLTools::cleanSimpleHtml($originalHtml) != HTMLTools::cleanSimpleHtml($data)) {
+            $str .= '<div class="modifiedActions"><button class="btn-link resetText" type="button">';
+            $str .= \Yii::t('amend', 'revert_changes');
+            $str .= '</button></div>';
+        }
 
         $str .= '</div>';
 
@@ -187,15 +202,15 @@ abstract class ISectionType
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    abstract public function printMotionToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf);
+    abstract public function printMotionToPDF(IPDFLayout $pdfLayout, \FPDI $pdf);
 
     /**
      * @param IPDFLayout $pdfLayout
-     * @param \TCPDF $pdf
+     * @param \FPDI $pdf
      */
-    abstract public function printAmendmentToPDF(IPDFLayout $pdfLayout, \TCPDF $pdf);
+    abstract public function printAmendmentToPDF(IPDFLayout $pdfLayout, \FPDI $pdf);
 
     /**
      * @param bool $isRight
@@ -252,11 +267,10 @@ abstract class ISectionType
      * @param Base $controller
      * @param CommentForm $commentForm
      * @param int[] $openedComments
-     * @paran bool $consolidatedAmendments
      * @return string
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
-    public function showMotionView(Base $controller, $commentForm, $openedComments, $consolidatedAmendments)
+    public function showMotionView(Base $controller, $commentForm, $openedComments)
     {
         return $this->getSimple(false);
     }

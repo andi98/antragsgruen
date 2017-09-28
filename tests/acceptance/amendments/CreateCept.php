@@ -15,7 +15,7 @@ MotionPage::openBy(
     [
         'subdomain'        => 'stdparteitag',
         'consultationPath' => 'std-parteitag',
-        'motionId'         => 2,
+        'motionSlug'       => '321-o-zapft-is',
     ]
 );
 $I->see('A2: O’ZAPFT IS!', 'h1');
@@ -37,11 +37,11 @@ $I->wantTo('modify the motion text');
 $I->dontSee('JavaScript aktiviert sein');
 $I->see('Gremium, LAG...');
 $I->dontSee('Beschlussdatum');
-$I->dontSee('Kontaktperson');
+$I->dontSee('Ansprechperson');
 $I->selectOption('#personTypeOrga', \app\models\db\ISupporter::PERSON_ORGANIZATION);
 $I->dontSee('Gremium, LAG...');
 $I->see('Beschlussdatum');
-$I->see('Kontaktperson');
+$I->see('Ansprechperson');
 
 $I->executeJS('window.newText = CKEDITOR.instances.sections_2_wysiwyg.getData();');
 $I->executeJS('window.newText = window.newText.replace(/woschechta Bayer/g, "Sauprei&szlig;");');
@@ -54,8 +54,8 @@ $I->see('Saupreiß', '#section_holder_2');
 $I->fillField('#sections_1', 'New title');
 
 $I->dontSeeElement('.editorialChange .wysiwyg-textarea');
-$I->click('.editorialChange .opener');
-$I->seeElement('.editorialChange .wysiwyg-textarea');
+$I->executeJS('$("input[name=editorialChange]").prop("checked", true).change();');
+$I->seeElement('#sectionHolderEditorial');
 $I->executeJS('CKEDITOR.instances.amendmentEditorial_wysiwyg.setData("<p>some meta text</p>");');
 
 $I->wantTo('submit the amendment with missing contact information');
@@ -101,7 +101,7 @@ $I->see(mb_strtoupper('Änderungsantrag zu A2 stellen'), 'h1');
 $I->seeInField(['name' => 'Initiator[primaryName]'], 'My company');
 $I->seeInField(['name' => 'Initiator[contactName]'], 'MeinKontakt');
 $I->seeInField(['name' => 'Initiator[resolutionDate]'], '12.01.2015');
-$I->see('some meta text', '#section_holder_editorial');
+$I->see('some meta text', '#sectionHolderEditorial');
 
 $I->executeJS('CKEDITOR.instances.amendmentReason_wysiwyg.setData("<p>This is my extended reason</p>");');
 
@@ -112,8 +112,8 @@ $I->see('some meta text');
 
 $I->wantTo('submit the final amendment');
 $I->submitForm('#amendmentConfirmForm', [], 'confirm');
-$I->see(mb_strtoupper('Änderungsantrag eingereicht'), 'h1');
-$I->see('Du hast den Änderungsantrag eingereicht. Er ist jetzt sofort sichtbar.');
+$I->see(mb_strtoupper('Änderungsantrag veröffentlicht'), 'h1');
+$I->see('Du hast den Änderungsantrag veröffentlicht. Er ist jetzt sofort sichtbar.');
 
 $I->wantTo('see the amendment on the start page');
 $I->gotoConsultationHome();
@@ -127,7 +127,7 @@ MotionPage::openBy(
     [
         'subdomain'        => 'stdparteitag',
         'consultationPath' => 'std-parteitag',
-        'motionId'         => 2,
+        'motionSlug'       => '321-o-zapft-is',
     ]
 );
 $I->see('A2: O’ZAPFT IS!', 'h1');

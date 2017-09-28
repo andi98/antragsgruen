@@ -7,7 +7,7 @@ $I->populateDBData1();
 $I->wantTo('allow comments for everyone');
 $I->gotoConsultationHome(true, 'bdk', 'bdk');
 $I->loginAsStdAdmin();
-$I->gotoStdAdminPage(true, 'bdk', 'bdk')->gotoMotionTypes(7);
+$I->gotoStdAdminPage('bdk', 'bdk')->gotoMotionTypes(7);
 $I->selectOption('#typePolicyComments', \app\models\policies\All::getPolicyName());
 $I->submitForm('.adminTypeForm', [], 'save');
 $I->logout();
@@ -15,10 +15,12 @@ $I->logout();
 
 $I->wantTo('write a comment, but forget my name');
 $I->gotoConsultationHome(true, 'bdk', 'bdk')->gotoMotionView(4);
+$I->wait(1);
 
 $I->dontSee('Kommentar schreiben');
 $I->click('#section_21_1 .comment .shower');
 $I->see('Kommentar schreiben', '#section_21_1');
+$I->executeJS('$("#comment_21_1_name").removeAttr("required");');
 $I->fillField('#comment_21_1_name', '');
 $I->fillField('#comment_21_1_email', 'test@example.org');
 $I->fillField('#comment_21_1_text', 'Some Text');
@@ -37,7 +39,7 @@ $I->submitForm('#section_21_1 .commentForm', [], 'writeComment');
 
 $I->see(mb_strtoupper('My Name'), '#section_21_1 .motionComment');
 $I->see('Some Text', '#section_21_1 .motionComment');
-$I->dontSee('#section_21_1 .motionComment .delLink');
+$I->dontSeeElementInDOM('#section_21_1 .motionComment .delLink');
 
 
 
@@ -62,7 +64,7 @@ $I->dontSee('Kommentar schreiben');
 $I->click('#section_21_1 .comment .shower');
 $I->see('Kommentar schreiben', '#section_21_1');
 
-$I->seeElement('#section_21_1 .motionComment .delLink');
+$I->seeElementInDOM('#section_21_1 .motionComment .delLink');
 
 $I->submitForm('#section_21_1 .motionComment .delLink', [], '');
 $I->seeBootboxDialog('Wirklich löschen');

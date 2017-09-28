@@ -9,6 +9,7 @@
   "mailService": {
     "transport": "sendmail"
   },
+  "baseLanguage": "de",
   "multisiteMode": true,
   "confirmEmailAddresses": true,
   "domainPlain": "http://localhost:8080/index-test.php",
@@ -17,7 +18,9 @@
   "randomSeed": "123456",
   "mailFromName": "Antragsgrün Test",
   "mailFromEmail": "test@antragsgruen.de",
+  "hasWurzelwerk": true,
   "adminUserIds": [
     3
-  ]
+  ],
+  "pdfExportConcat": true
 }

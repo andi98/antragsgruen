@@ -22,16 +22,18 @@ use yii\helpers\Html;
  */
 
 /** @var \app\controllers\Base $controller */
-$controller   = $this->context;
-$layout       = $controller->layoutParams;
+$controller = $this->context;
+$layout     = $controller->layoutParams;
+$layout->addAMDModule('frontend/AmendmentShow');
 $consultation = $amendment->getMyConsultation();
+$motion       = $amendment->getMyMotion();
 
-if (isset($_REQUEST['backUrl']) && $_REQUEST['backTitle']) {
-    $layout->addBreadcrumb($_REQUEST['backTitle'], $_REQUEST['backUrl']);
+if ($controller->isRequestSet('backUrl') && $controller->isRequestSet('backTitle')) {
+    $layout->addBreadcrumb($controller->getRequestValue('backTitle'), $controller->getRequestValue('backUrl'));
     $layout->addBreadcrumb($amendment->getShortTitle());
 } else {
-    $motionUrl = UrlHelper::createMotionUrl($amendment->getMyMotion());
-    $layout->addBreadcrumb($amendment->getMyMotion()->motionType->titleSingular, $motionUrl);
+    $motionUrl = UrlHelper::createMotionUrl($motion);
+    $layout->addBreadcrumb($motion->getBreadcrumbTitle(), $motionUrl);
     if (!$consultation->getSettings()->hideTitlePrefix && $amendment->titlePrefix != '') {
         $layout->addBreadcrumb($amendment->titlePrefix);
     } else {
@@ -41,74 +43,23 @@ if (isset($_REQUEST['backUrl']) && $_REQUEST['backTitle']) {
 
 $this->title = $amendment->getTitle() . ' (' . $consultation->title . ', Antragsgrün)';
 
-
-$html        = '<ul class="sidebarActions">';
-$sidebarRows = 0;
-
-if ($amendment->getMyMotion()->motionType->getPDFLayoutClass() !== null && $amendment->isVisible()) {
-    $html .= '<li class="download">';
-    $title = '<span class="icon glyphicon glyphicon-download-alt"></span>' .
-        Yii::t('motion', 'download_pdf');
-    $html .= Html::a($title, UrlHelper::createAmendmentUrl($amendment, 'pdf')) . '</li>';
-    $sidebarRows++;
-}
-
-
-if ($amendment->canEdit()) {
-    $html .= '<li class="edit">';
-    $title = '<span class="icon glyphicon glyphicon-edit"></span>' .
-        Yii::t('amend', 'amendment_edit');
-    $html .= Html::a($title, UrlHelper::createAmendmentUrl($amendment, 'edit')) . '</li>';
-    $sidebarRows++;
-}
-
-if ($amendment->canWithdraw()) {
-    $html .= '<li class="withdraw">';
-    $title = '<span class="icon glyphicon glyphicon-remove"></span>' .
-        Yii::t('amend', 'amendment_withdraw');
-    $html .= Html::a($title, UrlHelper::createAmendmentUrl($amendment, 'withdraw')) . '</li>';
-    $sidebarRows++;
-}
-
-if ($adminEdit) {
-    $html .= '<li class="adminEdit">';
-    $title = '<span class="icon glyphicon glyphicon-wrench"></span>' . \Yii::t('amend', 'sidebar_adminedit');
-    $html .= Html::a($title, $adminEdit) . '</li>';
-    $sidebarRows++;
-}
-
-$html .= '<li class="back">';
-$title = '<span class="icon glyphicon glyphicon-chevron-left"></span>' . \Yii::t('amend', 'sidebar_back');
-$html .= Html::a($title, UrlHelper::createMotionUrl($amendment->getMyMotion())) . '</li>';
-$sidebarRows++;
-
-$html .= '</ul>';
-$layout->menusHtml[] = $html;
-
+$sidebarRows = include(__DIR__ . DIRECTORY_SEPARATOR . '_view_sidebar.php');
 
 echo '<h1>' . Html::encode($amendment->getTitle()) . '</h1>';
 
-$minHeight = $sidebarRows * 40 - 60;
+$minHeight               = $sidebarRows * 40 - 100;
+$supportCollectingStatus = (
+    $amendment->status == Amendment::STATUS_COLLECTING_SUPPORTERS &&
+    !$amendment->isDeadlineOver()
+);
 
 echo '<div class="motionData" style="min-height: ' . $minHeight . 'px;"><div class="content">';
-
-if (!$amendment->getMyConsultation()->site->getSettings()->forceLogin) {
-    $layout->loadShariff();
-    $shariffBackend = UrlHelper::createUrl('consultation/shariffbackend');
-    $myUrl          = UrlHelper::absolutizeLink(UrlHelper::createAmendmentUrl($amendment));
-    $lang           = Yii::$app->language;
-    $dataTitle      = $amendment->getTitle();
-    echo '<div class="shariff" data-backend-url="' . Html::encode($shariffBackend) . '" data-theme="white"
-           data-url="' . Html::encode($myUrl) . '"
-           data-services="[&quot;twitter&quot;, &quot;facebook&quot;]"
-           data-lang="' . Html::encode($lang) . '" data-title="' . Html::encode($dataTitle) . '"></div>';
-}
 
 echo '<table class="motionDataTable">
                 <tr>
                     <th>' . Yii::t('amend', 'motion') . ':</th>
                     <td>' .
-    Html::a($amendment->getMyMotion()->title, UrlHelper::createMotionUrl($amendment->getMyMotion())) . '</td>
+    Html::a($motion->title, UrlHelper::createMotionUrl($motion)) . '</td>
                 </tr>
                 <tr>
                     <th>' . Yii::t('amend', 'initiator'), ':</th>
@@ -121,12 +72,21 @@ echo '</td></tr>
 
 $screeningMotionsShown = $consultation->getSettings()->screeningMotionsShown;
 $statiNames            = Amendment::getStati();
-if ($amendment->status == Amendment::STATUS_SUBMITTED_UNSCREENED) {
-    echo '<span class="unscreened">' . Html::encode($statiNames[$amendment->status]) . '</span>';
-} elseif ($amendment->status == Amendment::STATUS_SUBMITTED_SCREENED && $screeningMotionsShown) {
-    echo '<span class="screened">' . \Yii::t('amend', 'screened_hint') . '</span>';
-} else {
-    echo Html::encode($statiNames[$amendment->status]);
+switch ($amendment->status) {
+    case Amendment::STATUS_SUBMITTED_UNSCREENED:
+    case Amendment::STATUS_SUBMITTED_UNSCREENED_CHECKED:
+        echo '<span class="unscreened">' . Html::encode($statiNames[$amendment->status]) . '</span>';
+        break;
+    case Amendment::STATUS_SUBMITTED_SCREENED:
+        echo '<span class="screened">' . \Yii::t('amend', 'screened_hint') . '</span>';
+        break;
+    case Amendment::STATUS_COLLECTING_SUPPORTERS:
+        echo Html::encode($statiNames[$amendment->status]);
+        echo ' <small>(' . \Yii::t('motion', 'supporting_permitted') . ': ';
+        echo IPolicy::getPolicyNames()[$motion->motionType->policySupportAmendments] . ')</small>';
+        break;
+    default:
+        echo Html::encode($statiNames[$amendment->status]);
 }
 if (trim($amendment->statusString) != '') {
     echo " <small>(" . Html::encode($amendment->statusString) . ")</string>";
@@ -139,12 +99,46 @@ if ($amendment->dateResolution != '') {
        <td>' . Tools::formatMysqlDate($amendment->dateResolution) . '</td>
      </tr>';
 }
-echo '<tr><th>' . \Yii::t('amend', 'submitted_on') . ':</th>
+echo '<tr><th>' . \Yii::t('amend', ($amendment->isSubmitted() ? 'submitted_on' : 'created_on')) . ':</th>
        <td>' . Tools::formatMysqlDateTime($amendment->dateCreation) . '</td>
                 </tr>';
 echo '</table>';
 
 echo $controller->showErrors();
+
+
+if ($supportCollectingStatus) {
+    echo '<div class="alert alert-info supportCollectionHint" role="alert">';
+    $min  = $motion->motionType->getAmendmentSupportTypeClass()->getMinNumberOfSupporters();
+    $curr = count($amendment->getSupporters());
+    if ($curr >= $min) {
+        echo str_replace(['%MIN%', '%CURR%'], [$min, $curr], \Yii::t('amend', 'support_collection_reached_hint'));
+    } else {
+        echo str_replace(['%MIN%', '%CURR%'], [$min, $curr], \Yii::t('amend', 'support_collection_hint'));
+    }
+    if ($motion->motionType->policySupportAmendments != IPolicy::POLICY_ALL && !User::getCurrentUser()) {
+        $loginUrl = UrlHelper::createUrl(['user/login', 'backUrl' => \yii::$app->request->url]);
+        echo '<div style="vertical-align: middle; line-height: 40px; margin-top: 20px;">';
+        echo '<a href="' . Html::encode($loginUrl) . '" class="btn btn-default pull-right" rel="nofollow">' .
+            '<span class="icon glyphicon glyphicon-log-in" aria-hidden="true"></span> ' .
+            \Yii::t('base', 'menu_login') . '</a>';
+
+        echo Html::encode(\Yii::t('structure', 'policy_logged_supp_denied'));
+        echo '</div>';
+    }
+    echo '</div>';
+}
+if ($amendment->canFinishSupportCollection()) {
+    echo Html::beginForm('', 'post', ['class' => 'amendmentSupportFinishForm']);
+
+    echo '<div style="text-align: center; margin-bottom: 20px;">';
+
+    echo '<button type="submit" name="amendmentSupportFinish" class="btn btn-success">';
+    echo \Yii::t('amend', 'support_finish_btn');
+    echo '</button>';
+
+    echo Html::endForm();
+}
 
 echo '</div>';
 echo '</div>';
@@ -173,18 +167,24 @@ if ($amendment->changeExplanation != '') {
     echo '</section>';
 }
 
-$currUserId = (\Yii::$app->user->isGuest ? 0 : \Yii::$app->user->id);
-$supporters = $amendment->getSupporters();
-if (count($supporters) > 0) {
-    echo '<section class="supporters"><h2 class="green">' . \Yii::t('amend', 'supporters_title') . '</h2>
+$currUserId    = (\Yii::$app->user->isGuest ? 0 : \Yii::$app->user->id);
+$supporters    = $amendment->getSupporters();
+$supportPolicy = $motion->motionType->getAmendmentSupportPolicy();
+$supportType   = $motion->motionType->getAmendmentSupportTypeClass();
+
+if (count($supporters) > 0 || $supportCollectingStatus || $supportPolicy->checkCurrUser()) {
+    echo '<section class="supporters"><h2 class="green">' . \Yii::t('motion', 'supporters_heading') . '</h2>
     <div class="content">';
 
+    $iAmSupporting        = false;
+    $anonymouslySupported = \app\models\db\AmendmentSupporter::getMyAnonymousSupportIds();
     if (count($supporters) > 0) {
         echo '<ul>';
         foreach ($supporters as $supp) {
             echo '<li>';
-            if ($supp->id == $currUserId) {
+            if (($currUserId && $supp->userId == $currUserId) || in_array($supp->id, $anonymouslySupported)) {
                 echo '<span class="label label-info">' . \Yii::t('amend', 'supporter_you') . '</span> ';
+                $iAmSupporting = true;
             }
             echo Html::encode($supp->getNameWithOrga());
             echo '</li>';
@@ -193,13 +193,14 @@ if (count($supporters) > 0) {
     } else {
         echo '<em>' . \Yii::t('amend', 'supporter_none') . '</em><br>';
     }
-    echo "<br>";
+    echo '<br>';
+    MotionLayoutHelper::printSupportingSection($amendment, $supportPolicy, $supportType, $iAmSupporting);
     echo '</div></section>';
 }
 
-MotionLayoutHelper::printSupportSection($amendment, $amendment->getMyMotion()->motionType->getSupportPolicy(), $supportStatus);
+MotionLayoutHelper::printLikeDislikeSection($amendment, $supportPolicy, $supportStatus);
 
-if ($amendment->getMyMotion()->motionType->policyComments != IPolicy::POLICY_NOBODY) {
+if ($motion->motionType->policyComments != IPolicy::POLICY_NOBODY) {
     echo '<section class="comments"><h2 class="green">' . \Yii::t('amend', 'comments_title') . '</h2>';
 
     $form        = $commentForm;
@@ -209,6 +210,11 @@ if ($amendment->getMyMotion()->motionType->policyComments != IPolicy::POLICY_NOB
         $form              = new \app\models\forms\CommentForm();
         $form->paragraphNo = -1;
         $form->sectionId   = -1;
+        $user              = User::getCurrentUser();
+        if ($user) {
+            $form->name  = $user->name;
+            $form->email = $user->email;
+        }
     }
 
     $baseLink     = UrlHelper::createAmendmentUrl($amendment);
@@ -238,13 +244,12 @@ if ($amendment->getMyMotion()->motionType->policyComments != IPolicy::POLICY_NOB
         }
     }
 
-    if ($amendment->getMyMotion()->motionType->getCommentPolicy()->checkCurrUser()) {
+    if ($motion->motionType->getCommentPolicy()->checkCurrUser()) {
         MotionLayoutHelper::showCommentForm($form, $consultation, -1, -1);
-    } elseif ($amendment->getMyMotion()->motionType->getCommentPolicy()->checkCurrUser(true, true)) {
+    } elseif ($motion->motionType->getCommentPolicy()->checkCurrUser(true, true)) {
         echo '<div class="alert alert-info" style="margin: 19px;" role="alert">
-        <span class="glyphicon glyphicon-log-in"></span>' . \Yii::t('amend', 'comments_please_log_in') . '</div>';
+        <span class="glyphicon glyphicon-log-in"></span>&nbsp; ' .
+            \Yii::t('amend', 'comments_please_log_in') . '</div>';
     }
     echo '</section>';
 }
-
-$layout->addOnLoadJS('$.Antragsgruen.amendmentShow();');

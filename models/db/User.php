@@ -18,7 +18,11 @@ use yii\web\IdentityInterface;
  *
  * @property int $id
  * @property string $name
+ * @property string $nameGiven
+ * @property string $nameFamily
+ * @property string $organization
  * @property string $email
+ * @property int $fixedData
  * @property int $emailConfirmed
  * @property string $auth
  * @property string $dateCreation
@@ -46,11 +50,13 @@ class User extends ActiveRecord implements IdentityInterface
     const STATUS_CONFIRMED   = 0;
     const STATUS_DELETED     = -1;
 
-    const PRIVILEGE_ANY                   = 0;
-    const PRIVILEGE_CONSULTATION_SETTINGS = 1;
-    const PRIVILEGE_CONTENT_EDIT          = 2;
-    const PRIVILEGE_SCREENING             = 3;
-    const PRIVILEGE_MOTION_EDIT           = 4;
+    const PRIVILEGE_ANY                       = 0;
+    const PRIVILEGE_CONSULTATION_SETTINGS     = 1;
+    const PRIVILEGE_CONTENT_EDIT              = 2;
+    const PRIVILEGE_SCREENING                 = 3;
+    const PRIVILEGE_MOTION_EDIT               = 4;
+    const PRIVILEGE_CREATE_MOTIONS_FOR_OTHERS = 5;
+    const PRIVILEGE_SITE_ADMIN                = 6;
 
     /**
      * @return string[]
@@ -58,15 +64,15 @@ class User extends ActiveRecord implements IdentityInterface
     public static function getStati()
     {
         return [
-            1  => 'Nicht bestätigt',
-            0  => 'Bestätigt',
-            -1 => 'Gelöscht',
+            1  => \Yii::t('structure', 'user_status_1'),
+            0  => \Yii::t('structure', 'user_status_0'),
+            -1 => \Yii::t('structure', 'user_status_-1'),
         ];
     }
 
 
     /**
-     * @return null|User
+     * @return null|User|IdentityInterface
      */
     public static function getCurrentUser()
     {
@@ -112,7 +118,9 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public static function tableName()
     {
-        return 'user';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'user';
     }
 
     /**
@@ -403,6 +411,15 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
+     * @return bool
+     */
+    public function isEmailAuthUser()
+    {
+        $authParts = explode(':', $this->auth);
+        return ($authParts[0] == 'email');
+    }
+
+    /**
      * @param string $password
      * @return bool
      */
@@ -531,26 +548,10 @@ class User extends ActiveRecord implements IdentityInterface
         $link    = UrlHelper::absolutizeLink($link);
         $text    = str_replace(
             ['%CONSULTATION%', '%TITLE%', '%LINK%'],
-            [$motion->getConsultation()->title, $motion->getTitleWithPrefix(), $link],
+            [$motion->getMyConsultation()->title, $motion->getTitleWithPrefix(), $link],
             \Yii::t('user', 'noti_new_motion_body')
         );
-        $this->notificationEmail($motion->getConsultation(), $subject, $text);
-    }
-
-    /**
-     * @param Amendment $amendment
-     */
-    public function notifyAmendment(Amendment $amendment)
-    {
-        $motionTitle = $amendment->getMyMotion()->getTitleWithPrefix();
-        $subject     = str_replace('%TITLE%', $motionTitle, \Yii::t('user', 'noti_new_amend_title'));
-        $link        = UrlHelper::absolutizeLink(UrlHelper::createAmendmentUrl($amendment));
-        $text        = str_replace(
-            ['%CONSULTATION%', '%TITLE%', '%LINK%'],
-            [$amendment->getMyConsultation()->title, $motionTitle, $link],
-            \Yii::t('user', 'noti_new_motion_body')
-        );
-        $this->notificationEmail($amendment->getMyConsultation(), $subject, $text);
+        $this->notificationEmail($motion->getMyConsultation(), $subject, $text);
     }
 
     /**
@@ -585,12 +586,25 @@ class User extends ActiveRecord implements IdentityInterface
         if (in_array($this->id, $params->adminUserIds)) {
             return true;
         }
-        // @TODO Respect privilege table
+
         foreach ($consultation->site->admins as $admin) {
             if ($admin->id == $this->id) {
                 return true;
             }
         }
+
+        // Only site adminitrators are allowed to administer users.
+        // All other rights are granted to every consultation-level administrator
+        if ($privilege == User::PRIVILEGE_SITE_ADMIN) {
+            return false;
+        }
+
+        foreach ($consultation->userPrivileges as $userPrivilege) {
+            if ($userPrivilege->userId == $this->id) {
+                return $userPrivilege->containsPrivilege($privilege);
+            }
+        }
+
         return false;
     }
 
@@ -605,7 +619,7 @@ class User extends ActiveRecord implements IdentityInterface
                 return 'E-Mail: ' . $authparts[1];
             case 'openid':
                 if ($this->isWurzelwerkUser()) {
-                    return 'Wurzelwerk: ' . $this->getWurzelwerkName();
+                    return 'Grünes Netz: ' . $this->getWurzelwerkName();
                 } else {
                     return $this->auth;
                 }
@@ -655,7 +669,7 @@ class User extends ActiveRecord implements IdentityInterface
         $url      = UrlHelper::absolutizeLink($url);
         $text     = \Yii::t('user', 'recover_mail_body');
         $replaces = ['%URL%' => $url, '%CODE%' => $recoveryToken];
-        MailTools::sendWithLog($type, null, $this->email, $this->id, $subject, $text, $replaces);
+        MailTools::sendWithLog($type, null, $this->email, $this->id, $subject, $text, '', $replaces);
     }
 
     /**
@@ -704,11 +718,11 @@ class User extends ActiveRecord implements IdentityInterface
         if ($this->emailChange != $newEmail || $this->emailChange === null) {
             throw new FormError(\Yii::t('user', 'err_emailchange_notfound'));
         }
-        $ts = Tools::dateSql2timestamp($this->emailChangeAt);
-        if ($ts < time() - 24 * 3600) {
+        $timestamp = Tools::dateSql2timestamp($this->emailChangeAt);
+        if ($timestamp < time() - 24 * 3600) {
             throw new FormError(\Yii::t('user', 'err_change_toolong'));
         }
-        if ($code != $this->createEmailChangeToken($newEmail, $ts)) {
+        if ($code != $this->createEmailChangeToken($newEmail, $timestamp)) {
             throw new FormError(\Yii::t('user', 'err_code_wrong'));
         }
     }
@@ -730,7 +744,7 @@ class User extends ActiveRecord implements IdentityInterface
         $url      = UrlHelper::absolutizeLink($url);
         $text     = \Yii::t('user', 'emailchange_mail_body');
         $replaces = ['%URL%' => $url];
-        MailTools::sendWithLog($type, null, $newEmail, $this->id, $subject, $text, $replaces);
+        MailTools::sendWithLog($type, null, $newEmail, $this->id, $subject, $text, '', $replaces);
 
         $this->save();
     }
@@ -775,6 +789,10 @@ class User extends ActiveRecord implements IdentityInterface
     public function deleteAccount()
     {
         $this->name           = '';
+        $this->nameGiven      = '';
+        $this->nameFamily     = '';
+        $this->organization   = '';
+        $this->fixedData      = 0;
         $this->email          = '';
         $this->emailConfirmed = 0;
         $this->auth           = null;

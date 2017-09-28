@@ -5,6 +5,7 @@ namespace app\components\mail;
 use app\models\db\EMailBlacklist;
 use app\models\db\EMailLog;
 use app\models\exceptions\ServerConfiguration;
+use yii\helpers\Html;
 use Zend\Mail\Header\ContentType;
 
 abstract class Base
@@ -23,6 +24,9 @@ abstract class Base
             throw new ServerConfiguration('Invalid E-Mail configuration');
         }
         switch ($params['transport']) {
+            case 'mailgun':
+                return new Mailgun($params);
+                break;
             case 'mandrill':
                 return new Mandrill($params);
                 break;
@@ -80,13 +84,12 @@ abstract class Base
             $content->addParameter('charset', 'UTF-8');
             $mail->getHeaders()->addHeader($content);
         } else {
-            $converter = new \TijsVerkoyen\CssToInlineStyles\CssToInlineStyles($html);
-            $converter->setStripOriginalStyleTags(true);
-            $converter->setUseInlineStylesBlock(true);
-            $converter->setEncoding('UTF-8');
-            $converter->setCleanup(false);
-            $converter->setExcludeMediaQueries(true);
-            $contentHtml = $converter->convert();
+            $html = '<!DOCTYPE html><html>
+            <head><meta charset="utf-8"><title>' . Html::encode($subject) . '</title>
+            </head><body>' . $html . '</body></html>';
+            
+            $converter = new \TijsVerkoyen\CssToInlineStyles\CssToInlineStyles();
+            $contentHtml = $converter->convert($html);
             $contentHtml = preg_replace("/ data\-[a-z0-9_-]+=\"[^\"]*\"/siu", "", $contentHtml);
 
             $textPart          = new \Zend\Mime\Part($plain);

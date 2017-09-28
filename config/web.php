@@ -7,6 +7,8 @@ require_once($configDir . 'AntragsgruenApp.php');
 
 if (YII_ENV == 'test') {
     $configFile = __DIR__ . DIRECTORY_SEPARATOR . 'config_tests.json';
+} elseif (isset($_SERVER['ANTRAGSGRUEN_CONFIG'])) {
+    $configFile = $_SERVER['ANTRAGSGRUEN_CONFIG'];
 } else {
     $configFile = __DIR__ . DIRECTORY_SEPARATOR . 'config.json';
 }
@@ -18,7 +20,7 @@ if (file_exists($configFile)) {
 try {
     $params = new \app\models\settings\AntragsgruenApp($config);
 } catch (\Exception $e) {
-    die('Could not load configuration; probably due to a syntax error in config/config.json?');	
+    die('Could not load configuration; probably due to a syntax error in config/config.json?');
 }
 
 if (YII_DEBUG === false) {
@@ -51,12 +53,28 @@ $config = yii\helpers\ArrayHelper::merge(
         ],
     ]
 );
+if ($params->cookieDomain) {
+    $config['components']['session'] = [
+        'cookieParams' => [
+            'httponly' => true,
+            'domain'   => $params->cookieDomain,
+        ]
+    ];
+} elseif ($params->domainPlain) {
+    $config['components']['session'] = [
+        'cookieParams' => [
+            'httponly' => true,
+            'domain'   => '.' . parse_url($params->domainPlain, PHP_URL_HOST),
+        ]
+    ];
+}
+
 if ($params->hasWurzelwerk && !isset($config['components']['authClientCollection']['clients']['wurzelwerk'])) {
     $config['components']['authClientCollection']['clients']['wurzelwerk'] = [
         'class' => 'app\components\WurzelwerkAuthClient',
     ];
 }
-if (YII_ENV_DEV && strpos($_SERVER['HTTP_USER_AGENT'], 'pa11y') === false) {
+if (YII_ENV_DEV && file_exists($configFile) && strpos($_SERVER['HTTP_USER_AGENT'], 'pa11y') === false) {
     // configuration adjustments for 'dev' environment
     $config['bootstrap'][]      = 'debug';
     $config['modules']['debug'] = [

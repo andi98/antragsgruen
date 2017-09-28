@@ -22,18 +22,8 @@ $pdf->SetAuthor(implode(', ', $initiators));
 $pdf->SetTitle(Yii::t('motion', 'Motion') . " " . $motion->getTitleWithPrefix());
 $pdf->SetSubject(Yii::t('motion', 'Motion') . " " . $motion->getTitleWithPrefix());
 
+\app\views\motion\LayoutHelper::printToPDF($pdf, $pdfLayout, $motion);
 
-// add a page
-$pdf->AddPage();
-
-$pdfLayout->printMotionHeader($motion);
-
-
-foreach ($motion->getSortedSections(true) as $section) {
-    $section->getSectionType()->printMotionToPDF($pdfLayout, $pdf);
-}
-
-
-$pdf->Output('Motion_' . $motion->titlePrefix . '.pdf', 'I');
+$pdf->Output($motion->getFilenameBase(true) . '.pdf', 'I');
 
 die();

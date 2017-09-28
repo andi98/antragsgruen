@@ -31,7 +31,9 @@ class AmendmentComment extends IComment
      */
     public static function tableName()
     {
-        return 'amendmentComment';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'amendmentComment';
     }
 
     /**
@@ -97,7 +99,8 @@ class AmendmentComment extends IComment
      */
     public function getMotionTitle()
     {
-        return $this->amendment->titlePrefix . ' zu ' . $this->amendment->getMyMotion()->getTitleWithPrefix();
+        return $this->amendment->titlePrefix . ' ' . \Yii::t('amend', 'amend_for_motion') .
+            ' ' . $this->amendment->getMyMotion()->getTitleWithPrefix();
     }
 
     /**
@@ -107,7 +110,7 @@ class AmendmentComment extends IComment
     {
         $feed->addEntry(
             UrlHelper::createAmendmentCommentUrl($this),
-            'Kommentar zu: ' . $this->getMotionTitle(),
+            \Yii::t('motion', 'comment_for') . ': ' . $this->getMotionTitle(),
             $this->name,
             $this->text,
             Tools::dateSql2timestamp($this->dateCreation)

@@ -34,6 +34,7 @@ class EMailLog extends ActiveRecord
     const TYPE_SITE_ADMIN                = 7;
     const TYPE_MOTION_SUBMIT_CONFIRM     = 8;
     const TYPE_EMAIL_CHANGE              = 9;
+    const TYPE_MOTION_SUPPORTER_REACHED  = 10;
 
     const STATUS_SENT              = 0;
     const STATUS_SKIPPED_BLACKLIST = 1;
@@ -41,16 +42,17 @@ class EMailLog extends ActiveRecord
     const STATUS_SKIPPED_OTHER     = 3;
 
     public static $MANDRILL_TAGS = [
-        0 => 'other',
-        1 => 'registration',
-        2 => 'motion-notification-user',
-        3 => 'motion-notification-admin',
-        4 => 'access-granted',
-        5 => 'debug',
-        6 => 'password-recovery',
-        7 => 'site-admin',
-        8 => 'motion-submitted',
-        9 => 'email-change',
+        0  => 'other',
+        1  => 'registration',
+        2  => 'motion-notification-user',
+        3  => 'motion-notification-admin',
+        4  => 'access-granted',
+        5  => 'debug',
+        6  => 'password-recovery',
+        7  => 'site-admin',
+        8  => 'motion-submitted',
+        9  => 'email-change',
+        10 => 'motion-supporter-reached',
     ];
 
     /**
@@ -90,7 +92,9 @@ class EMailLog extends ActiveRecord
      */
     public static function tableName()
     {
-        return 'emailLog';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'emailLog';
     }
 
     /**

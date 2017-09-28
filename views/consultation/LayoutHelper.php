@@ -35,16 +35,19 @@ class LayoutHelper
         echo '<li class="' . implode(' ', $classes) . '">';
         echo '<p class="date">' . Tools::formatMysqlDate($motion->dateCreation) . '</p>' . "\n";
         echo '<p class="title">' . "\n";
+
+        $motionUrl = UrlHelper::createMotionUrl($motion);
+        echo '<a href="' . Html::encode($motionUrl) . '" class="motionLink' . $motion->id . '">';
+
         echo '<span class="glyphicon glyphicon-file motionIcon"></span>';
         if (!$consultation->getSettings()->hideTitlePrefix && $motion->titlePrefix != '') {
-            $linkOpts = ['class' => 'motionPrefix motionLink' . $motion->id];
-            echo Html::a($motion->titlePrefix, UrlHelper::createMotionUrl($motion), $linkOpts);
+            echo '<span class="motionPrefix">' . Html::encode($motion->titlePrefix) . '</span>';
         }
-        echo ' ';
 
-        $title    = ($motion->title == '' ? '-' : $motion->title);
-        echo '<a href="' . Html::encode(UrlHelper::createMotionUrl($motion)) . '" ' .
-            'class="motionTitle motionLink' . $motion->id . '">' . Html::encode($title) . '</a>';
+        $title = ($motion->title == '' ? '-' : $motion->title);
+        echo ' <span class="motionTitle">' . Html::encode($title) . '</span>';
+
+        echo '</a>';
 
         if ($hasPDF) {
             $html = '<span class="glyphicon glyphicon-download-alt"></span> PDF';
@@ -108,7 +111,7 @@ class LayoutHelper
             $motionCreateLink = UrlHelper::createUrl(['motion/create', 'agendaItemId' => $agendaItem->id]);
             echo '<a href="' . Html::encode($motionCreateLink) . '" class="motionCreateLink btn btn-default btn-xs"';
             echo ' title="' . Html::encode($agendaItem->title . ': ' . $agendaItem->motionType->createTitle) . '"';
-            echo '><span class="glyphicon glyphicon-plus"></span> ';
+            echo ' rel="nofollow"><span class="glyphicon glyphicon-plus"></span> ';
             echo nl2br(Html::encode($agendaItem->motionType->createTitle)) . '</a>';
         }
 
@@ -129,12 +132,14 @@ class LayoutHelper
             $opts = ['class' => 'form-control motionType'];
             echo Html::dropDownList('motionType', ($typeId > 0 ? $typeId : 0), $motionTypes, $opts);
             echo '<button class="btn btn-default" type="submit"><span class="glyphicon glyphicon-ok"></span></button>
+            <a href="#" class="delAgendaItem"><span class="glyphicon glyphicon-minus-sign"></span></a>
             </form>';
         }
 
         $shownMotions = [];
         if ($showMotions) {
             $motions = $agendaItem->getMotionsFromConsultation();
+            $motions = MotionSorter::getSortedMotionsFlat($consultation, $motions);
             if (count($motions) > 0) {
                 echo '<ul class="motions">';
                 foreach ($motions as $motion) {

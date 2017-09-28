@@ -2,7 +2,6 @@
 
 use app\components\HTMLTools;
 use app\components\UrlHelper;
-use app\models\db\ConsultationMotionType;
 use yii\helpers\Html;
 
 /**
@@ -14,11 +13,10 @@ $controller = $this->context;
 $layout     = $controller->layoutParams;
 
 $this->title = \Yii::t('admin', 'motion_type_create_head');
-$layout->addBreadcrumb(\Yii::t('admin', 'bread_admin'), UrlHelper::createUrl('admin/index'));
+$layout->addBreadcrumb(\Yii::t('admin', 'bread_settings'), UrlHelper::createUrl('admin/index'));
 $layout->addBreadcrumb(\Yii::t('admin', 'bread_types'));
 
 $layout->addCSS('css/backend.css');
-$layout->addJS('js/backend.js');
 
 echo '<h1>' . $this->title . '</h1>';
 echo Html::beginForm('', 'post', ['class' => 'motionTypeCreateForm content form-horizontal']);
@@ -86,9 +84,9 @@ echo '</div></div>';
 
 
 echo '<div class="form-group">';
-echo '<div class="col-md-3 control-label label">';
+echo '<label class="col-md-3 control-label">';
 echo \Yii::t('admin', 'motion_type_templ') . ':';
-echo '</div><div class="col-md-9">';
+echo '</label><div class="col-md-9">';
 
 
 foreach ($controller->consultation->motionTypes as $motionType) {

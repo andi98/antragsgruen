@@ -7,6 +7,7 @@ $I->populateDBData1();
 $I->wantTo('switch to amendment screening mode');
 $I->gotoConsultationHome();
 $I->loginAsStdAdmin();
+$I->dontSeeElement('#adminTodo');
 $consultationSettingPage = $I->gotoStdAdminPage()->gotoConsultation();
 $I->cantSeeCheckboxIsChecked('#screeningAmendments');
 $I->checkOption('#screeningAmendments');
@@ -40,8 +41,8 @@ $I->dontSeeElement('.amendment' . AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
 $I->wantTo('go to the admin page');
 $I->gotoConsultationHome();
 $I->loginAsStdAdmin();
-$I->gotoStdAdminPage();
 
+$I->click('#adminTodo');
 $I->seeElement('.adminTodo .amendmentsScreen' . AcceptanceTester::FIRST_FREE_AMENDMENT_ID);
 
 
@@ -49,13 +50,13 @@ $I->wantTo('Screen the amendment with an invalid title String (race condition)')
 $I->click('.adminTodo .amendmentsScreen' . AcceptanceTester::FIRST_FREE_AMENDMENT_ID . ' a');
 $I->seeElement('#amendmentScreenForm');
 $I->executeJS('$("#amendmentScreenForm input[name=titlePrefix]").attr("value", "Ä2");');
-$I->submitForm('#amendmentScreenForm ', [], ['screen']);
+$I->submitForm('#amendmentScreenForm ', [], 'screen');
 $I->see('Das angegebene Antragskürzel wird bereits von einem anderen Änderungsantrag verwendet.');
 
 
 $I->wantTo('screen the amendment normally');
 $I->seeElement('#amendmentScreenForm');
-$I->submitForm('#amendmentScreenForm', [], ['screen']);
+$I->submitForm('#amendmentScreenForm', [], 'screen');
 $I->see('Der Änderungsantrag wurde freigeschaltet.');
 
 

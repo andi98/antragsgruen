@@ -1,5 +1,6 @@
 <?php
 
+use app\components\HTMLTools;
 use app\components\Tools;
 use app\components\UrlHelper;
 use app\models\db\Amendment;
@@ -41,23 +42,8 @@ foreach ($consultation->motionTypes as $type) {
     }
 }
 
-$html = Html::beginForm(UrlHelper::createUrl('consultation/search'), 'post', ['class' => 'form-search']);
-$html .= '<div class="nav-list"><div class="nav-header">' . \Yii::t('con', 'sb_search') . '</div>
-    <div style="text-align: center; padding-left: 7px; padding-right: 7px;">
-    <div class="input-group">
-      <input type="text" class="form-control query" name="query"
-        placeholder="' . Html::encode(\Yii::t('con', 'sb_search_query')) . '" required
-        title="' . Html::encode(\Yii::t('con', 'sb_search_query')) . '">
-      <span class="input-group-btn">
-        <button class="btn btn-default" type="submit" title="' . Html::encode(\Yii::t('con', 'sb_search_do')) . '">
-            <span class="glyphicon glyphicon-search"></span> ' . \Yii::t('con', 'sb_search_do') . '
-        </button>
-      </span>
-    </div>
-    </div>
-</div>';
-$html .= Html::endForm();
-$layout->menusHtml[] = $html;
+
+$layout->menusHtml[] = $layout->hooks->getSearchForm();
 
 $showCreate = true;
 if ($consultation->getSettings()->getStartLayoutView() == 'index_layout_agenda') {
@@ -80,19 +66,10 @@ if ($showCreate) {
         /** @var ConsultationMotionType[] $working */
         if (count($working) == 1) {
             if ($working[0]->getMotionPolicy()->checkCurrUserMotion(false, true)) {
-                $link        = UrlHelper::createUrl(['motion/create', 'motionTypeId' => $working[0]->id]);
-                $description = $working[0]->createTitle;
-
-                $layout->menusHtml[]          = '<div class="createMotionHolder1"><div class="createMotionHolder2">' .
-                    '<a class="createMotion" href="' . Html::encode($link) . '"
-                    title="' . Html::encode($description) . '">' .
-                    '<span class="glyphicon glyphicon-plus-sign"></span>' . $description .
-                    '</a></div></div>';
-                $layout->menusSmallAttachment = '<a class="navbar-brand" href="' . Html::encode($link) . '">' .
-                    '<span class="glyphicon glyphicon-plus-sign"></span>' . $description . '</a>';
+                $layout->hooks->setSidebarCreateMotionButton($working[0]);
             }
         } else {
-            $html = '<div><ul class="nav nav-list motions">';
+            $html = '<div class="sidebar-box"><ul class="nav nav-list motions">';
             $html .= '<li class="nav-header">' . Yii::t('con', 'create_new') . '</li>';
             $htmlSmall = '<li class="dropdown">
       <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true"
@@ -102,11 +79,11 @@ if ($showCreate) {
                 if ($motionType->getMotionPolicy()->checkCurrUserMotion(false, true)) {
                     $motionCreateLink = UrlHelper::createUrl(['motion/create', 'motionTypeId' => $motionType->id]);
                     $html .= '<li class="createMotion' . $motionType->id . '">';
-                    $html .= '<a href="' . Html::encode($motionCreateLink) . '">';
+                    $html .= '<a href="' . Html::encode($motionCreateLink) . '" rel="nofollow">';
                     $html .= Html::encode($motionType->titleSingular) . '</a></li>';
 
                     $htmlSmall .= '<li class="createMotion' . $motionType->id . '">';
-                    $htmlSmall .= '<a href="' . Html::encode($motionCreateLink) . '">';
+                    $htmlSmall .= '<a href="' . Html::encode($motionCreateLink) . '" rel="nofollow">';
                     $htmlSmall .= Html::encode($motionType->titleSingular) . '</a></li>';
                 }
             }
@@ -118,15 +95,33 @@ if ($showCreate) {
     }
 }
 
+
+$html = '<div class="sidebar-box"><ul class="nav nav-list"><li class="nav-header">' .
+    Yii::t('con', 'news') . '</li>';
+
+$title = '<span class="fontello fontello-globe"></span>' . Yii::t('con', 'activity_log');
+$link  = UrlHelper::createUrl('consultation/activitylog');
+$html .= '<li class="activitylog">' . Html::a($title, $link) . '</li>';
+
+$title = '<span class="glyphicon glyphicon-bell"></span>' . Yii::t('con', 'email_notifications');
+$link  = UrlHelper::createUrl('consultation/notifications');
+$html .= '<li class="notifications">' . Html::a($title, $link) . '</li>';
+
+$html .= '</ul></div>';
+$layout->menusHtml[]      = $html;
+$layout->menusHtmlSmall[] = '<li>' . Html::a(Yii::t('con', 'news'), $link) . '</li>';
+
+
 if ($hasMotions) {
-    $html = '<div><ul class="nav nav-list motions">';
+    $html = '<div class="sidebar-box"><ul class="nav nav-list motions">';
     $html .= '<li class="nav-header">' . Yii::t('con', 'new_motions') . '</li>';
     if (count($newestMotions) == 0) {
         $html .= '<li><i>' . \Yii::t('con', 'sb_motions_none') . '</i></li>';
     } else {
         foreach ($newestMotions as $motion) {
             $motionLink = UrlHelper::createMotionUrl($motion);
-            $name       = '<span class="' . $motion->getIconCSSClass() . '"></span>' . Html::encode($motion->title);
+            $name       = '<span class="' . $motion->getIconCSSClass() . '"></span>' .
+                HTMLTools::encodeAddShy($motion->title);
             $html .= '<li>' . Html::a($name, $motionLink) . "</li>\n";
         }
     }
@@ -135,7 +130,7 @@ if ($hasMotions) {
 }
 
 if ($hasAmendments) {
-    $html = '<div><ul class="nav nav-list amendments">';
+    $html = '<div class="sidebar-box"><ul class="nav nav-list amendments">';
     $html .= '<li class="nav-header">' . Yii::t('con', 'new_amendments') . '</li>';
     if (count($newestAmendments) == 0) {
         $html .= '<li><i>' . \Yii::t('con', 'sb_amends_none') . '</i></li>';
@@ -156,23 +151,10 @@ if ($hasAmendments) {
 }
 
 
-if ($consultation->getSettings()->getStartLayoutView() != 'index_layout_agenda') {
-    /** @var ConsultationMotionType[] $motionTypes */
-    if (count($motionTypes) == 1 && $motionTypes[0]->getMotionPolicy()->checkCurrUserMotion(false, true)) {
-        $newUrl                       = UrlHelper::createUrl(['motion/create', 'motionTypeId' => $motionTypes[0]->id]);
-        $description                  = $motionTypes[0]->createTitle;
-        $layout->menusHtml[]          = '<div class="createMotionHolder1"><div class="createMotionHolder2">' .
-            '<a class="createMotion" href="' . Html::encode($newUrl) . '" title="' . $description . '">' .
-            '<span class="glyphicon glyphicon-plus-sign"></span>' . $description .
-            '</a></div></div>';
-        $layout->menusSmallAttachment = '<a class="navbar-brand" href="' . Html::encode($newUrl) . '">' .
-            '<span class="glyphicon glyphicon-plus-sign"></span>' . $description . '</a>';
-    }
-}
-
 
 if ($hasComments) {
-    $html = '<div><ul class="nav nav-list comments"><li class="nav-header">' . \Yii::t('con', 'new_comments') . '</li>';
+    $html = '<div class="sidebar-box"><ul class="nav nav-list comments">' .
+        '<li class="nav-header">' . \Yii::t('con', 'new_comments') . '</li>';
     if (count($newestComments) == 0) {
         $html .= '<li><i>' . \Yii::t('con', 'sb_comm_none') . '</i></li>';
     } else {
@@ -197,17 +179,6 @@ if ($hasComments) {
     $layout->menusHtml[] = $html;
 }
 
-$title = '<span class="glyphicon glyphicon-bell"></span>';
-$title .= Yii::t('con', 'email_notifications');
-$link = UrlHelper::createUrl('consultation/notifications');
-$html = '<div><ul class="nav nav-list"><li class="nav-header">' .
-    Yii::t('con', 'notifications') . '</li>';
-$html .= '<li class="notifications">' . Html::a($title, $link) . '</li>';
-$html .= '</ul></div>';
-$layout->menusHtml[]      = $html;
-$layout->menusHtmlSmall[] = '<li>' . Html::a(Yii::t('con', 'notifications'), $link) . '</li>';
-
-
 if ($consultation->getSettings()->showFeeds) {
     $feeds          = 0;
     $feedsHtml      = '';
@@ -218,7 +189,11 @@ if ($consultation->getSettings()->showFeeds) {
 
     if ($hasMotions) {
         $feedUrl = UrlHelper::createUrl('consultation/feedmotions');
-        $link    = Html::a(Yii::t('con', 'feed_motions'), $feedUrl, ['class' => 'feedMotions']);
+        $link    = Html::a(
+            '<span class="fontello fontello-rss-squared"></span>' . Yii::t('con', 'feed_motions'),
+            $feedUrl,
+            ['class' => 'feedMotions']
+        );
         $feedsHtml .= '<li>' . $link . '</li>';
         $feedsHtmlSmall .= '<li>' . $link . '</li>';
         $feeds++;
@@ -226,7 +201,11 @@ if ($consultation->getSettings()->showFeeds) {
 
     if ($hasAmendments) {
         $feedUrl = UrlHelper::createUrl('consultation/feedamendments');
-        $link    = Html::a(Yii::t('con', 'feed_amendments'), $feedUrl, ['class' => 'feedAmendments']);
+        $link    = Html::a(
+            '<span class="fontello fontello-rss-squared"></span>' . Yii::t('con', 'feed_amendments'),
+            $feedUrl,
+            ['class' => 'feedAmendments']
+        );
         $feedsHtml .= '<li>' . $link . '</li>';
         $feedsHtmlSmall .= '<li>' . $link . '</li>';
         $feeds++;
@@ -234,7 +213,11 @@ if ($consultation->getSettings()->showFeeds) {
 
     if ($hasComments) {
         $feedUrl = UrlHelper::createUrl('consultation/feedcomments');
-        $link    = Html::a(Yii::t('con', 'feed_comments'), $feedUrl, ['class' => 'feedComments']);
+        $link    = Html::a(
+            '<span class="fontello fontello-rss-squared"></span>' . Yii::t('con', 'feed_comments'),
+            $feedUrl,
+            ['class' => 'feedComments']
+        );
         $feedsHtml .= '<li>' . $link . '</li>';
         $feedsHtmlSmall .= '<li>' . $link . '</li>';
         $feeds++;
@@ -242,13 +225,17 @@ if ($consultation->getSettings()->showFeeds) {
 
     if ($feeds > 1) {
         $feedUrl = UrlHelper::createUrl('consultation/feedall');
-        $link    = Html::a(Yii::t('con', 'feed_all'), $feedUrl, ['class' => 'feedAll']);
+        $link    = Html::a(
+            '<span class="fontello fontello-rss-squared"></span>' . Yii::t('con', 'feed_all'),
+            $feedUrl,
+            ['class' => 'feedAll']
+        );
         $feedsHtml .= '<li>' . $link . '</li>';
         $feedsHtmlSmall .= '<li>' . $link . '</li>';
     }
 
     $feeds_str = ($feeds == 1 ? Yii::t('con', 'feed') : Yii::t('con', 'feeds'));
-    $html      = '<div><ul class="nav nav-list"><li class="nav-header">';
+    $html      = '<div class="sidebar-box"><ul class="nav nav-list"><li class="nav-header">';
     $html .= $feeds_str;
     $html .= '</li>' . $feedsHtml . '</ul></div>';
     $feedsHtmlSmall .= '</ul></li>';
@@ -258,21 +245,37 @@ if ($consultation->getSettings()->showFeeds) {
 }
 
 if ($hasPDF) {
-    $name    = '<span class="glyphicon glyphicon-download-alt"></span>' . Yii::t('con', 'pdf_all');
-    $pdfLink = UrlHelper::createUrl('motion/pdfcollection');
-    $html    = '<div><ul class="nav nav-list"><li class="nav-header">PDFs</li>';
-    $html .= '<li>' . Html::a($name, $pdfLink, ['class' => 'motionPdfCompilation']) . '</li>';
+    $opts = ['class' => 'motionPdfCompilation'];
+    $html = '<div class="sidebar-box"><ul class="nav nav-list"><li class="nav-header">PDFs</li>';
+    if (count($consultation->motionTypes) > 1) {
+        foreach ($consultation->motionTypes as $motionType) {
+            if (count($motionType->getVisibleMotions(false)) == 0) {
+                continue;
+            }
+            $pdfLink = UrlHelper::createUrl(['motion/pdfcollection', 'motionTypeId' => $motionType->id]);
+            $name = '<span class="glyphicon glyphicon-download-alt"></span>' . Yii::t('con', 'pdf_all_short');
+            $name .= ': ' . Html::encode($motionType->titlePlural);
+            $html .= '<li>' . Html::a($name, $pdfLink, ['class' => 'motionPdfCompilation']) . '</li>';
 
-    $link                     = Html::a(Yii::t('con', 'pdf_motions'), $pdfLink, ['class' => 'motionPdfCompilation']);
-    $layout->menusHtmlSmall[] = '<li>' . $link . '</li>';
+            $link                     = Html::a(Yii::t('con', 'pdf_motions'), $pdfLink, $opts);
+            $layout->menusHtmlSmall[] = '<li>' . $link . '</li>';
+        }
+    } else {
+        $pdfLink = UrlHelper::createUrl('motion/pdfcollection');
+        $name    = '<span class="glyphicon glyphicon-download-alt"></span>' . Yii::t('con', 'pdf_all');
+        $html    .= '<li>' . Html::a($name, $pdfLink, ['class' => 'motionPdfCompilation']) . '</li>';
+
+        $link                     = Html::a(Yii::t('con', 'pdf_motions'), $pdfLink, $opts);
+        $layout->menusHtmlSmall[] = '<li>' . $link . '</li>';
+    }
 
     if ($hasAmendments) {
         $amendmentPdfLink = UrlHelper::createUrl('amendment/pdfcollection');
         $linkTitle        = '<span class="glyphicon glyphicon-download-alt"></span>';
         $linkTitle .= Yii::t('con', 'pdf_amendments');
         $html .= '<li>' . Html::a($linkTitle, $amendmentPdfLink, ['class' => 'amendmentPdfs']) . '</li>';
+        $link = Html::a(Yii::t('con', 'pdf_amendments_small'), $amendmentPdfLink, ['class' => 'amendmentPdfs']);
 
-        $link                     = Html::a(Yii::t('con', 'pdf_amendments_small'), $amendmentPdfLink, ['class' => 'amendmentPdfs']);
         $layout->menusHtmlSmall[] = '<li>' . $link . '</li>';
     }
 
@@ -281,15 +284,5 @@ if ($hasPDF) {
 }
 
 if ($consultation->site->getSettings()->showAntragsgruenAd) {
-    $layout->postSidebarHtml = '<div class="antragsgruenAd well">
-        <div class="nav-header">Dein Antragsgrün</div>
-        <div class="content">
-            Du willst Antragsgrün selbst für deine(n) KV / LV / GJ / BAG / LAG einsetzen?
-            <div>
-                <a href="https://antragsgruen.de/" title="Das Antragstool selbst einsetzen" class="btn btn-primary">
-                <span class="glyphicon glyphicon-chevron-right"></span> Infos
-                </a>
-            </div>
-        </div>
-    </div>';
+    $layout->postSidebarHtml = $layout->hooks->getAntragsgruenAd();
 }

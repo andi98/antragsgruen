@@ -22,6 +22,7 @@ if ($mode == 'create') {
 } else {
     $this->title = str_replace('%TYPE%', $form->motionType->titleSingular, \Yii::t('motion', 'motion_edit'));
 }
+$layout->robotsNoindex = true;
 
 $layout->loadCKEditor();
 $layout->loadDatepicker();
@@ -38,16 +39,28 @@ echo '<div class="form content hideIfEmpty">';
 
 echo $controller->showErrors();
 
-if ($form->motionType->getAmendmentPolicy()->checkCurrUserAmendment(true, true)) {
+$publicPolicies = [IPolicy::POLICY_ALL, IPolicy::POLICY_LOGGED_IN, IPolicy::POLICY_WURZELWERK];
+if (in_array($form->motionType->policyAmendments, $publicPolicies)) {
     echo '<div style="font-weight: bold; text-decoration: underline;">' .
         \Yii::t('motion', 'create_explanation_title') . '</div>' .
-        str_replace('%HOME%', UrlHelper::createUrl('consultation/index'), \Yii::t('motion', 'create_explanation')) .
+        str_replace('%HOME%', UrlHelper::homeUrl(), \Yii::t('motion', 'create_explanation')) .
         '<br><br>';
+}
+if ($form->motionType->getMotionSupportTypeClass()->collectSupportersBeforePublication()) {
+    /** @var \app\models\supportTypes\CollectBeforePublish $supp */
+    $supp = $form->motionType->getMotionSupportTypeClass();
+    $str = \Yii::t('motion', 'support_collect_explanation');
+    $str = str_replace('%MIN%', $supp->getMinNumberOfSupporters(), $str);
+    $str = str_replace('%MIN+1%', ($supp->getMinNumberOfSupporters() + 1), $str);
+
+    echo '<div style="font-weight: bold; text-decoration: underline;">' .
+        \Yii::t('motion', 'support_collect_explanation_title') . '</div>' .
+        $str . '<br><br>';
 }
 
 
 $motionPolicy = $form->motionType->getMotionPolicy();
-if (!in_array($motionPolicy::getPolicyID(), [IPolicy::POLICY_ALL, IPolicy::POLICY_LOGGED_IN])) {
+if (!in_array($motionPolicy::getPolicyID(), $publicPolicies)) {
     echo '<div style="font-weight: bold; text-decoration: underline;">' .
         Yii::t('motion', 'create_prerequisites'), '</div>';
 
@@ -55,9 +68,7 @@ if (!in_array($motionPolicy::getPolicyID(), [IPolicy::POLICY_ALL, IPolicy::POLIC
 }
 
 if (\Yii::$app->user->isGuest) {
-    echo '<div class="alert alert-warning jsProtectionHint" role="alert">';
-    echo \Yii::t('base', 'err_js_or_login');
-    echo '</div>';
+    echo \app\components\AntiSpam::getJsProtectionHint($form->motionId);
 }
 
 echo '<div id="draftHint" class="hidden alert alert-info" role="alert"
@@ -68,11 +79,12 @@ echo '<div id="draftHint" class="hidden alert alert-info" role="alert"
 echo '</div>';
 
 
-echo Html::beginForm(
-    '',
-    'post',
-    ['id' => 'motionEditForm', 'class' => 'motionEditForm draftForm', 'enctype' => 'multipart/form-data']
-);
+echo Html::beginForm('', 'post', [
+    'id'                       => 'motionEditForm',
+    'class'                    => 'motionEditForm draftForm',
+    'enctype'                  => 'multipart/form-data',
+    'data-antragsgruen-widget' => 'frontend/MotionEditForm'
+]);
 
 echo '<div class="content">';
 
@@ -103,7 +115,7 @@ if (count($tags) == 1) {
         foreach ($tags as $tag) {
             $tagOptions[$tag->id] = $tag->title;
         }
-        echo '<div class="label">' . \Yii::t('motion', 'tag_tags') . ':</div><div style="position: relative;">';
+        echo '<label>' . \Yii::t('motion', 'tag_tags') . ':</label><div style="position: relative;">';
         echo HTMLTools::fueluxSelectbox('tags[]', $tagOptions, $selected, ['id' => 'tagSelect']);
         echo '</div>';
     }
@@ -117,13 +129,11 @@ foreach ($form->sections as $section) {
 echo '</div>';
 
 
-$initiatorClass = $form->motionType->getMotionInitiatorFormClass();
+$initiatorClass = $form->motionType->getMotionSupportTypeClass();
 echo $initiatorClass->getMotionForm($form->motionType, $form, $controller);
 
 echo '<div class="submitHolder content"><button type="submit" name="save" class="btn btn-primary">';
 echo '<span class="glyphicon glyphicon-chevron-right"></span> ' . \Yii::t('motion', 'go_on');
 echo '</button></div>';
-
-$layout->addOnLoadJS('$.Antragsgruen.motionEditForm();');
 
 echo Html::endForm();

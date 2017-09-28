@@ -8,7 +8,7 @@ $I->wantTo('test if I can create a motion using another one as template');
 $I->gotoConsultationHome(true, '1laenderrat2015', '1laenderrat2015');
 $I->loginAsStdAdmin();
 
-$I->gotoStdAdminPage(true, '1laenderrat2015', '1laenderrat2015')->gotoMotionList();
+$I->gotoMotionList();
 $I->click('.adminMotionTable .motion8 .actionCol .dropdown-toggle');
 $I->click('.adminMotionTable .motion8 .actionCol .asTemplate');
 $I->see('Antrag stellen', 'h1');
@@ -20,7 +20,7 @@ $I->seeCheckboxIsChecked('#personTypeOrga');
 $I->seeCheckboxIsChecked('input[name=otherInitiator]');
 
 
-$I->gotoStdAdminPage(true, '1laenderrat2015', '1laenderrat2015')->gotoMotionList();
+$I->gotoMotionList();
 $I->click('.adminMotionTable .motion48 .actionCol .dropdown-toggle');
 $I->click('.adminMotionTable .motion48 .actionCol .asTemplate');
 $I->see('Antrag stellen', 'h1');
@@ -32,20 +32,5 @@ $I->seeCheckboxIsChecked('input[name=otherInitiator]');
 $name1 = $I->executeJS('return $(".supporterData .supporterRow").eq(0).find("input.name").val()');
 $name2 = $I->executeJS('return $(".supporterData .supporterRow").eq(1).find("input.name").val()');
 if ($name1 != 'Felix Deist' || $name2 != 'Tarek Al-Wazir') {
-    $I->fail('supporter data not present');
-}
-
-
-$I->gotoStdAdminPage(true, '1laenderrat2015', '1laenderrat2015')->gotoMotionList();
-$I->click('.adminMotionTable .amendment13 .actionCol .dropdown-toggle');
-$I->click('.adminMotionTable .amendment13 .actionCol .asTemplate');
-$I->see('Änderungsantrag', 'h1');
-$I->seeInField('#initiatorPrimaryName', 'Daniel Gollasch');
-$I->dontSeeElement('#resolutionDate');
-$I->seeCheckboxIsChecked('#personTypeNatural');
-$I->seeCheckboxIsChecked('input[name=otherInitiator]');
-$name1 = $I->executeJS('return $(".supporterData .supporterRow").eq(0).find("input.name").val()');
-$name2 = $I->executeJS('return $(".supporterData .supporterRow").eq(1).find("input.name").val()');
-if ($name1 != 'Antje Kapek, LV Berlin' || $name2 != 'Axel Vogel, LV Brandenburg') {
     $I->fail('supporter data not present');
 }

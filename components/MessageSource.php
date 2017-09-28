@@ -51,6 +51,7 @@ class MessageSource extends \yii\i18n\MessageSource
                 'comment'   => 'Kommentare',
                 'admin'     => 'Administration',
                 'user'      => 'Account-Einstellungen',
+                'wizard'    => 'Wizard',
             ];
         } else {
             return [
@@ -66,6 +67,7 @@ class MessageSource extends \yii\i18n\MessageSource
                 'comment'   => 'Comments',
                 'admin'     => 'Administration',
                 'user'      => 'User accounts',
+                'wizard'    => 'Wizard',
             ];
         }
     }
@@ -76,17 +78,27 @@ class MessageSource extends \yii\i18n\MessageSource
      */
     public static function getLanguageVariants($language)
     {
+        /** @var AntragsgruenApp $params */
+        $params        = \Yii::$app->params;
+        $localMessages = (isset($params->localMessages[$language]) ? $params->localMessages[$language] : []);
         if ($language == 'de') {
-            return [
+            return array_merge([
                 'de-parteitag' => 'Konferenz / Parteitag',
                 'de-bewerbung' => 'Bewerbungsverfahren',
                 'de-programm'  => 'Programmdiskussion',
-            ];
+                'de-bdk'       => 'BDK',
+            ], $localMessages);
         };
         if ($language == 'en') {
-            return [
-                'en-ukcongress' => 'Conference (UK)',
-            ];
+            return array_merge([
+                'en-uk'       => 'English (UK)',
+                'en-congress' => 'Convention',
+            ], $localMessages);
+        }
+        if ($language == 'fr') {
+            return array_merge([
+                'fr' => 'Français',
+            ], $localMessages);
         }
         return [];
     }
@@ -99,6 +111,7 @@ class MessageSource extends \yii\i18n\MessageSource
         return [
             'de' => 'Deutsch',
             'en' => 'English',
+            'fr' => 'Français',
         ];
     }
 
@@ -172,18 +185,26 @@ class MessageSource extends \yii\i18n\MessageSource
             $baseFile = $this->getMessageFilePath($category, $language);
             return $this->loadMessagesFromFile($baseFile);
         };
-        $parts = explode('-', $consultation->wordingBase);
+        $languages = explode(',', $consultation->wordingBase);
 
-        $baseFile     = $this->getMessageFilePath($category, $parts[0]);
-        $baseMessages = $this->loadMessagesFromFile($baseFile);
-        if (!is_array($baseMessages)) {
-            $baseMessages = [];
-        }
+        $baseFile = $this->getMessageFilePath($category, 'en');
+        $origMessages = $this->loadMessagesFromFile($baseFile);
 
-        $extFile     = $this->getMessageFilePath($category, $consultation->wordingBase);
-        $extMessages = $this->loadMessagesFromFile($extFile);
-        if (!is_array($extMessages)) {
-            $extMessages = [];
+        $baseMessages = $extMessages = [];
+        foreach ($languages as $lang) {
+            $parts = explode('-', $lang);
+
+            $baseFile = $this->getMessageFilePath($category, $parts[0]);
+            $messages = $this->loadMessagesFromFile($baseFile);
+            if ($messages) {
+                $baseMessages = array_merge($baseMessages, $messages);
+            }
+
+            $extFile  = $this->getMessageFilePath($category, $lang);
+            $messages = $this->loadMessagesFromFile($extFile);
+            if ($messages) {
+                $extMessages = array_merge($extMessages, $messages);
+            }
         }
 
         $conSpecific = [];
@@ -195,7 +216,7 @@ class MessageSource extends \yii\i18n\MessageSource
             }
         }
 
-        return array_merge($baseMessages, $extMessages, $conSpecific);
+        return array_merge($origMessages, $baseMessages, $extMessages, $conSpecific);
     }
 
 
@@ -232,7 +253,7 @@ class MessageSource extends \yii\i18n\MessageSource
     public static function getPageData($consultation, $pageKey)
     {
         switch ($pageKey) {
-            case 'maintainance':
+            case 'maintenance':
                 $data                  = new PageData();
                 $data->pageTitle       = \Yii::t('base', 'content_maint_title');
                 $data->breadcrumbTitle = \Yii::t('base', 'content_maint_bread');
@@ -242,7 +263,7 @@ class MessageSource extends \yii\i18n\MessageSource
                 $data                  = new PageData();
                 $data->pageTitle       = \Yii::t('base', 'content_help_title');
                 $data->breadcrumbTitle = \Yii::t('base', 'content_help_bread');
-                $data->text            = '<p>Hilfe...</p>';
+                $data->text            = \Yii::t('base', 'content_help_place');
                 break;
             case 'legal':
                 $data                  = new PageData();

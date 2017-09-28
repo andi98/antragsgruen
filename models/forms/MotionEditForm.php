@@ -9,6 +9,7 @@ use app\models\db\Motion;
 use app\models\db\MotionSection;
 use app\models\db\MotionSupporter;
 use app\models\exceptions\FormError;
+use app\models\sectionTypes\ISectionType;
 use yii\base\Model;
 
 class MotionEditForm extends Model
@@ -31,6 +32,9 @@ class MotionEditForm extends Model
     /** @var null|int */
     public $motionId = null;
 
+    /** @var string[] */
+    public $fileUploadErrors = [];
+
     private $adminMode = false;
 
     /**
@@ -43,19 +47,28 @@ class MotionEditForm extends Model
         parent::__construct();
         $this->motionType = $motionType;
         $this->agendaItem = $agendaItem;
-        $motionSections   = [];
+        $this->setSection($motion);
+    }
+
+
+    /**
+     * @param Motion|null $motion
+     */
+    private function setSection($motion)
+    {
+        $motionSections = [];
         if ($motion) {
             $this->motionId   = $motion->id;
             $this->supporters = $motion->motionSupporters;
             foreach ($motion->tags as $tag) {
                 $this->tags[] = $tag->id;
             }
-            foreach ($motion->sections as $section) {
+            foreach ($motion->getActiveSections() as $section) {
                 $motionSections[$section->sectionId] = $section;
             }
         }
         $this->sections = [];
-        foreach ($motionType->motionSections as $sectionType) {
+        foreach ($this->motionType->motionSections as $sectionType) {
             if (isset($motionSections[$sectionType->id])) {
                 $this->sections[] = $motionSections[$sectionType->id];
             } else {
@@ -103,17 +116,41 @@ class MotionEditForm extends Model
     }
 
     /**
+     * @param Motion $motion
+     */
+    public function cloneMotionText(Motion $motion)
+    {
+        /** @var MotionSection[] $byId */
+        $byId = [];
+        foreach ($motion->getActiveSections() as $section) {
+            $byId[$section->sectionId] = $section;
+        }
+        foreach ($this->sections as $section) {
+            if (isset($byId[$section->sectionId])) {
+                $section->data    = $byId[$section->sectionId]->data;
+                $section->dataRaw = $byId[$section->sectionId]->dataRaw;
+            }
+        }
+    }
+
+    /**
      * @param array $data
      * @param bool $safeOnly
      */
     public function setAttributes($data, $safeOnly = true)
     {
+        $this->fileUploadErrors = [];
+
         list($values, $files) = $data;
         parent::setAttributes($values, $safeOnly);
         foreach ($this->sections as $section) {
-            if ($section->getSettings()->type == \app\models\sectionTypes\ISectionType::TYPE_TITLE && isset($values['motion']['title']))
-                $section->getSectionType()->setAmendmentData($values['motion']['title']);
-
+            if ($this->motionId && $section->getSettings()->type == ISectionType::TYPE_TEXT_SIMPLE) {
+                // Updating the text is done separately, including amendment rewriting
+                continue;
+            }
+            if ($section->getSettings()->type == ISectionType::TYPE_TITLE && isset($values['motion']['title'])) {
+                $section->getSectionType()->setMotionData($values['motion']['title']);
+            }
             if (isset($values['sections'][$section->sectionId])) {
                 $section->getSectionType()->setMotionData($values['sections'][$section->sectionId]);
             }
@@ -126,6 +163,12 @@ class MotionEditForm extends Model
                         }
                     }
                     $section->getSectionType()->setMotionData($data);
+                }
+                if (!empty($files['sections']['error'][$section->sectionId])) {
+                    $error = $files['sections']['error'][$section->sectionId];
+                    if ($error === UPLOAD_ERR_INI_SIZE || $error == UPLOAD_ERR_FORM_SIZE) {
+                        $this->fileUploadErrors[] = $section->getSettings()->title . ': Uploaded file is too big';
+                    }
                 }
             }
         }
@@ -147,15 +190,72 @@ class MotionEditForm extends Model
                 $errors[] = str_replace('%MAX%', $type->title, \Yii::t('base', 'err_max_len_exceed'));
             }
         }
+        $errors = array_merge($errors, $this->fileUploadErrors);
 
         try {
-            $this->motionType->getMotionInitiatorFormClass()->validateMotion();
+            $this->motionType->getMotionSupportTypeClass()->validateMotion();
         } catch (FormError $e) {
             $errors = array_merge($errors, $e->getMessages());
         }
 
         if (count($errors) > 0) {
             throw new FormError($errors);
+        }
+    }
+
+    /**
+     * Returns true, if the rewriting was successful
+     *
+     * @param Motion $motion
+     * @param string[] $newHtmls
+     * @param array $overrides
+     * @return bool
+     */
+    public function updateTextRewritingAmendments(Motion $motion, $newHtmls, $overrides = [])
+    {
+        foreach ($motion->getAmendmentsRelevantForCollissionDetection() as $amendment) {
+            foreach ($amendment->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
+                if (isset($overrides[$amendment->id]) && isset($overrides[$amendment->id][$section->sectionId])) {
+                    $section_overrides = $overrides[$amendment->id][$section->sectionId];
+                } else {
+                    $section_overrides = [];
+                }
+                if (!$section->canRewrite($newHtmls[$section->sectionId], $section_overrides)) {
+                    return false;
+                }
+            }
+        }
+
+        foreach ($motion->getAmendmentsRelevantForCollissionDetection() as $amendment) {
+            foreach ($amendment->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
+                if (isset($overrides[$amendment->id]) && isset($overrides[$amendment->id][$section->sectionId])) {
+                    $section_overrides = $overrides[$amendment->id][$section->sectionId];
+                } else {
+                    $section_overrides = [];
+                }
+                $section->performRewrite($newHtmls[$section->sectionId], $section_overrides);
+                $section->save();
+            }
+        }
+
+        foreach ($motion->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
+            $section->data = $newHtmls[$section->sectionId];
+            $section->save();
+        }
+
+        $this->setSection($motion);
+
+        return true;
+    }
+
+    /**
+     * @param Motion $motion
+     * @param string[] $newHtmls
+     */
+    public function setSectionTextWithoutSaving(Motion $motion, $newHtmls)
+    {
+        foreach ($motion->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
+            $section->data = $newHtmls[$section->sectionId];
         }
     }
 
@@ -173,8 +273,8 @@ class MotionEditForm extends Model
 
         $motion = new Motion();
 
-        $this->setAttributes([$_POST, $_FILES]);
-        $this->supporters = $this->motionType->getMotionInitiatorFormClass()->getMotionSupporters($motion);
+        $this->setAttributes([\Yii::$app->request->post(), $_FILES]);
+        $this->supporters = $this->motionType->getMotionSupportTypeClass()->getMotionSupporters($motion);
 
         $this->createMotionVerify();
 
@@ -189,7 +289,7 @@ class MotionEditForm extends Model
         $motion->agendaItemId   = ($this->agendaItem ? $this->agendaItem->id : null);
 
         if ($motion->save()) {
-            $this->motionType->getMotionInitiatorFormClass()->submitMotion($motion);
+            $this->motionType->getMotionSupportTypeClass()->submitMotion($motion);
 
             foreach ($this->tags as $tagId) {
                 /** @var ConsultationSettingsTag $tag */
@@ -205,6 +305,7 @@ class MotionEditForm extends Model
             }
 
             $motion->refreshTitle();
+            $motion->slug = $motion->createSlug();
             $motion->save();
 
             return $motion;
@@ -222,6 +323,10 @@ class MotionEditForm extends Model
 
         foreach ($this->sections as $section) {
             $type = $section->getSettings();
+            if ($this->motionId && $type->type == ISectionType::TYPE_TEXT_SIMPLE) {
+                // Updating the text is done separately, including amendment rewriting
+                continue;
+            }
             if ($section->data == '' && $type->required) {
                 $errors[] = str_replace('%FIELD%', $type->title, \Yii::t('base', 'err_no_data_given'));
             }
@@ -229,11 +334,31 @@ class MotionEditForm extends Model
                 $errors[] = str_replace('%MAX%', $type->title, \Yii::t('base', 'err_max_len_exceed'));
             }
         }
+        $errors = array_merge($errors, $this->fileUploadErrors);
 
-        $this->motionType->getMotionInitiatorFormClass()->validateMotion();
+        $this->motionType->getMotionSupportTypeClass()->validateMotion();
 
         if (count($errors) > 0) {
             throw new FormError(implode("\n", $errors));
+        }
+    }
+
+    /**
+     * @param Motion $motion
+     */
+    private function overwriteSections(Motion $motion)
+    {
+        /** @var MotionSection[] $sectionsById */
+        $sectionsById = [];
+        foreach ($motion->getActiveSections() as $section) {
+            $sectionsById[$section->sectionId] = $section;
+        }
+        foreach ($this->sections as $section) {
+            if (isset($sectionsById[$section->sectionId])) {
+                $section = $sectionsById[$section->sectionId];
+            }
+            $section->motionId = $motion->id;
+            $section->save();
         }
     }
 
@@ -249,14 +374,14 @@ class MotionEditForm extends Model
             throw new FormError(\Yii::t('motion', 'err_create_permission'));
         }
 
-        $this->supporters = $this->motionType->getMotionInitiatorFormClass()->getMotionSupporters($motion);
+        $this->supporters = $this->motionType->getMotionSupportTypeClass()->getMotionSupporters($motion);
 
         if (!$this->adminMode) {
             $this->saveMotionVerify();
         }
 
         if ($motion->save()) {
-            $this->motionType->getMotionInitiatorFormClass()->submitMotion($motion);
+            $this->motionType->getMotionSupportTypeClass()->submitMotion($motion);
 
             // Tags
             foreach ($motion->tags as $tag) {
@@ -270,14 +395,7 @@ class MotionEditForm extends Model
                 }
             }
 
-            // Sections
-            foreach ($motion->sections as $section) {
-                $section->delete();
-            }
-            foreach ($this->sections as $section) {
-                $section->motionId = $motion->id;
-                $section->save();
-            }
+            $this->overwriteSections($motion);
 
             $motion->refreshTitle();
             $motion->save();

@@ -5,7 +5,7 @@ $I = new AcceptanceTester($scenario);
 $I->populateDBData1();
 
 
-$I->wantTo('check that supporters are disabled by deafult');
+$I->wantTo('check that supporters are disabled by default');
 $I->gotoConsultationHome()->gotoMotionCreatePage();
 $I->dontSeeElement('.supporterData');
 
@@ -16,13 +16,13 @@ $I->gotoConsultationHome();
 $I->loginAsStdAdmin();
 $motionTypePage = $I->gotoStdAdminPage()->gotoMotionTypes(1);
 
-$I->seeOptionIsSelected('#typeInitiatorForm', \app\models\initiatorForms\OnlyInitiator::getTitle());
-$I->selectOption('#typeInitiatorForm', \app\models\initiatorForms\WithSupporters::getTitle());
+$I->seeOptionIsSelected('#typeSupportType', \app\models\supportTypes\OnlyInitiator::getTitle());
+$I->selectOption('#typeSupportType', \app\models\supportTypes\GivenByInitiator::getTitle());
 $I->fillField('#typeMinSupporters', 0);
 $I->uncheckOption('#typeHasOrgaRow input[type=checkbox]');
 
 $motionTypePage->saveForm();
-$I->seeOptionIsSelected('#typeInitiatorForm', \app\models\initiatorForms\WithSupporters::getTitle());
+$I->seeOptionIsSelected('#typeSupportType', \app\models\supportTypes\GivenByInitiator::getTitle());
 
 
 
@@ -85,9 +85,9 @@ $createPage->saveForm();
 
 $I->wait(1);
 $I->dontSee(mb_strtoupper('Antrag bestätigen'), 'h1');
-$I->see('Es müssen mindestens 2 UnterstützerInnen angegeben werden');
+$I->see('Es müssen mindestens 2 Unterstützer*innen angegeben werden');
 $I->acceptBootboxAlert();
-$I->dontSee('Es müssen mindestens 2 UnterstützerInnen angegeben werden');
+$I->dontSee('Es müssen mindestens 2 Unterstützer*innen angegeben werden');
 
 
 
@@ -180,7 +180,7 @@ $I->see('Person 2');
 $I->wantTo('submit the motion');
 
 $I->submitForm('#motionConfirmForm', [], 'confirm');
-$I->see(mb_strtoupper('Antrag eingereicht'), 'h1');
+$I->see(mb_strtoupper('Antrag veröffentlicht'), 'h1');
 $I->submitForm('#motionConfirmedForm', [], '');
 
 $I->see('Another sample motion with supporters');

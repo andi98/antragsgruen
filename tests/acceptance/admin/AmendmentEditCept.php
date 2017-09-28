@@ -5,7 +5,7 @@ $I = new AcceptanceTester($scenario);
 $I->populateDBData1();
 
 $I->wantTo('edit an amendment');
-$I->loginAndGotoStdAdminPage()->gotoMotionList()->gotoAmendmentEdit(1);
+$I->loginAndGotoMotionList()->gotoAmendmentEdit(1);
 $I->see('Lorem ipsum dolor sit amet');
 $I->see('Oamoi a Maß');
 $I->see('Auf gehds beim Schichtl');
@@ -25,7 +25,7 @@ $I->submitForm('#amendmentUpdateForm', [], 'save');
 $I->wantTo('verify the changes are visible');
 $I->click('.sidebarActions .view');
 $I->see(mb_strtoupper('Ä1neu zu A2'));
-$I->see('Test 123', 'ins');
+$I->see('Test 123', 'p.inserted');
 $I->see('Another Reason');
 $I->see('02.03.2015');
 $I->see('01.01.2015');

@@ -17,14 +17,14 @@ $I->loginAsStdUser();
 $I->wantTo('create a motion');
 
 $page = $I->gotoConsultationHome()->gotoMotionCreatePage();
-$page->createMotion('Unscreened motion');
+$page->createMotion('Unscreened motion', true);
 $I->gotoConsultationHome();
 
 $I->seeElement('.motionListStd');
 $I->dontSee('Unscreened motion', '.motionListStd');
 $I->see('Unscreened motion', '.myMotionList');
 
-$I->wantTo('check that other users don\' see it');
+$I->wantTo('check that other users don\'t see it');
 
 $I->logout();
 $I->gotoConsultationHome();

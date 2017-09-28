@@ -17,6 +17,7 @@ $layout     = $controller->layoutParams;
 $this->title = \Yii::t('user', 'my_acc_title');
 $layout->addBreadcrumb(\Yii::t('user', 'my_acc_bread'));
 $layout->robotsNoindex = true;
+$layout->addAMDModule('frontend/AccountEdit');
 
 
 $formUrl = \app\components\UrlHelper::createUrl('user/myaccount');
@@ -48,7 +49,7 @@ echo '
 </div>';
 if ($user->email) {
     echo '<div class="form-group emailExistingRow">
-    <div class="col-md-4 control-label label">' . \Yii::t('user', 'email_address') . ':</div>
+    <label class="col-md-4 control-label">' . \Yii::t('user', 'email_address') . ':</label>
     <div class="col-md-8"><span class="currentEmail">';
     if ($user->emailConfirmed) {
         echo Html::encode($user->email);
@@ -114,5 +115,3 @@ echo '<h2 class="green">' . \Yii::t('user', 'del_title') . '</h2>' .
      </div>
     ' . Html::endForm();
 
-
-$layout->addOnLoadJS('$.Antragsgruen.accountEdit();');

@@ -2,10 +2,8 @@
 
 namespace app\models\db;
 
-use app\models\exceptions\FormError;
+use app\components\Tools;
 use app\models\settings\AntragsgruenApp;
-use app\models\exceptions\DB;
-use app\models\sitePresets\ISitePreset;
 use app\models\siteSpecificBehavior\DefaultBehavior;
 use yii\db\ActiveRecord;
 
@@ -20,6 +18,7 @@ use yii\db\ActiveRecord;
  * @property string $title
  * @property string $titleShort
  * @property string $dateCreation
+ * @property string $dateDeletion
  * @property string $settings
  * @property string $contact
  * @property int $status
@@ -40,7 +39,9 @@ class Site extends ActiveRecord
      */
     public static function tableName()
     {
-        return 'site';
+        /** @var \app\models\settings\AntragsgruenApp $app */
+        $app = \Yii::$app->params;
+        return $app->tablePrefix . 'site';
     }
 
     /**
@@ -56,7 +57,7 @@ class Site extends ActiveRecord
      */
     public function getConsultations()
     {
-        return $this->hasMany(Consultation::class, ['siteId' => 'id']);
+        return $this->hasMany(Consultation::class, ['siteId' => 'id'])->where('consultation.dateDeletion IS NULL');
     }
 
     /**
@@ -112,67 +113,58 @@ class Site extends ActiveRecord
         $this->settings       = $settings->toJSON();
     }
 
+    /**
+     * @param string $subdomain
+     * @return boolean
+     */
+    public static function isSubdomainAvailable($subdomain)
+    {
+        if ($subdomain == '') {
+            return false;
+        }
+        /** @var AntragsgruenApp $params */
+        $params = \Yii::$app->params;
+        if (in_array($subdomain, $params->blockedSubdomains)) {
+            return false;
+        }
+        $site = Site::findOne(['subdomain' => $subdomain]);
+        return ($site === null);
+    }
 
     /**
      * @return Site[]
      */
     public static function getSidebarSites()
     {
+        if (AntragsgruenApp::getInstance()->mode == 'sandbox') {
+            return [];
+        }
         $shownSites = [];
         /** @var Site[] $sites */
-        $sites = Site::find()->orderBy('dateCreation DESC')->all();
+        $sites = Site::find()->with('currentConsultation')->all();
         foreach ($sites as $site) {
             if (!$site->public) {
+                continue;
+            }
+            if (!$site->currentConsultation) {
                 continue;
             }
             $shownSites[] = $site;
         }
 
+        usort($shownSites, function (Site $site1, Site $site2) {
+            $ts1 = Tools::dateSql2timestamp($site1->currentConsultation->dateCreation);
+            $ts2 = Tools::dateSql2timestamp($site2->currentConsultation->dateCreation);
+            if ($ts1 < $ts2) {
+                return 1;
+            } elseif ($ts1 < $ts2) {
+                return -1;
+            } else {
+                return 0;
+            }
+        });
+
         return $shownSites;
-    }
-
-    /**
-     * @param ISitePreset $preset
-     * @param string $subdomain
-     * @param string $title
-     * @param string $orga
-     * @param string $contact
-     * @param int $isWillingToPay
-     * @param int $status
-     * @return Site
-     * @throws DB
-     * @throws FormError
-     */
-    public static function createFromForm($preset, $subdomain, $title, $orga, $contact, $isWillingToPay, $status)
-    {
-        /** @var AntragsgruenApp $params */
-        $params = \Yii::$app->params;
-        if (in_array($subdomain, $params->blockedSubdomains)) {
-            throw new FormError(\Yii::t('manager', 'site_err_subdomain'));
-        }
-
-        $site               = new Site();
-        $site->title        = $title;
-        $site->titleShort   = $title;
-        $site->organization = $orga;
-        $site->contact      = $contact;
-        $site->subdomain    = $subdomain;
-        $site->public       = 1;
-        $site->status       = $status;
-        $site->dateCreation = date('Y-m-d H:i:s');
-
-        $siteSettings                          = $site->getSettings();
-        $siteSettings->willingToPay            = $isWillingToPay;
-        $siteSettings->willingToPayLastAskedTs = time();
-        $site->setSettings($siteSettings);
-
-        $preset->setSiteSettings($site);
-
-        if (!$site->save()) {
-            throw new DB($site->getErrors());
-        }
-
-        return $site;
     }
 
     /**
@@ -224,10 +216,34 @@ class Site extends ActiveRecord
 
     /**
      */
-    public function deleteSite()
+    public function setDeleted()
     {
-        $this->status    = static::STATUS_DELETED;
-        $this->subdomain = null;
+        $this->status       = static::STATUS_DELETED;
+        $this->subdomain    = null;
+        $this->dateDeletion = date('Y-m-d H:i:s');
         $this->save(false);
+
+        foreach ($this->consultations as $consultation) {
+            $consultation->setDeleted();
+        }
+    }
+
+    /**
+     * @return bool
+     */
+    public function readyForPurge()
+    {
+        if ($this->dateDeletion === null) {
+            return false;
+        }
+        /** @var AntragsgruenApp $params */
+        $params = \Yii::$app->params;
+        if ($params->sitePurgeAfterDays === null || $params->sitePurgeAfterDays < 1) {
+            return false;
+        }
+        $deleted = Tools::dateSql2timestamp($this->dateDeletion);
+        $days    = floor((time() - $deleted) / (3600 * 24));
+
+        return ($days > $params->sitePurgeAfterDays);
     }
 }

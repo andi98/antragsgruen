@@ -1,7 +1,8 @@
 <?php
+
 namespace app\commands;
 
-use app\components\latex\Exporter;
+use app\components\SitePurger;
 use app\models\db\Amendment;
 use app\models\db\Consultation;
 use app\models\db\Motion;
@@ -101,7 +102,7 @@ class AdminController extends Controller
             $motion->getNumberOfCountableLines();
             $motion->getFirstLineNumber();
             if ($params->xelatexPath) {
-                Exporter::createMotionPdf($motion);
+                \app\views\motion\LayoutHelper::createPdf($motion);
             }
             foreach ($motion->amendments as $amendment) {
                 if ($amendment->status == Amendment::STATUS_DELETED) {
@@ -110,15 +111,114 @@ class AdminController extends Controller
                 echo '  - Amendment ' . $amendment->id . "\n";
                 $amendment->getFirstDiffLine();
                 if ($params->xelatexPath) {
-                    Exporter::createAmendmentPdf($amendment);
+                    \app\views\amendment\LayoutHelper::createPdf($amendment);
                 }
             }
         }
         if ($params->xelatexPath) {
             $this->stdout(
                 'Please remember to ensure the runtime/cache-directory and all files are still writable ' .
-                'by the web process if the current process is being run with a different user.'  . "\n"
+                'by the web process if the current process is being run with a different user.' . "\n"
             );
+        }
+    }
+
+    /**
+     * Delete all sites ready for purging.
+     */
+    public function actionPurgeFromDatabase()
+    {
+        $app = AntragsgruenApp::getInstance();
+        $sql = 'SELECT * FROM `' . $app->tablePrefix . 'site` WHERE `dateDeletion` IS NOT NULL';
+        /** @var Site[] $sites */
+        $sites = Site::findBySql($sql)->all();
+        foreach ($sites as $site) {
+            if (!$site->readyForPurge()) {
+                $this->stderr("Site " . $site->id . " not ready for purging\n");
+                continue;
+            }
+            try {
+                $this->stdout('Purging data of site ' . $site->id . "\n");
+                SitePurger::purgeSite($site->id);
+                $this->stdout("-> Finished\n");
+            } catch (\Exception $e) {
+                $this->stderr($e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Delete all sites older than 3 days. Only available in Sandbox mode.
+     */
+    public function actionDeleteOldSandboxInstances()
+    {
+        $app = AntragsgruenApp::getInstance();
+        if ($app->mode != 'sandbox') {
+            $this->stderr('This can only be used in sandbox mode');
+            return;
+        }
+
+        $sql = 'SELECT * FROM `' . $app->tablePrefix . 'site` ' .
+            'WHERE `dateCreation` < NOW() - INTERVAL 3 DAY AND `dateDeletion` IS NULL';
+        /** @var Site[] $sites */
+        $sites = Site::findBySql($sql)->all();
+        foreach ($sites as $site) {
+            try {
+                $site->setDeleted();
+                $this->stdout('- Deleted: ' . $site->id . "\n");
+            } catch (\Exception $e) {
+                $this->stderr($e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Exports the language strings of a consultation into a language variant in the messages/-directory
+     *
+     * @param string $subdomain
+     * @param string $consultation
+     * @param string $languageKey
+     */
+    public function actionCreateLanguageFromConsultation($subdomain, $consultation, $languageKey)
+    {
+        if ($subdomain == '' || $consultation == '') {
+            $this->stdout('yii admin/flush-consultation-caches [subdomain] [consultationPath]' . "\n");
+            return;
+        }
+        /** @var Site $site */
+        $site = Site::findOne(['subdomain' => $subdomain]);
+        if (!$site) {
+            $this->stderr('Site not found' . "\n");
+            return;
+        }
+        $con = null;
+        foreach ($site->consultations as $cons) {
+            if ($cons->urlPath == $consultation) {
+                $con = $cons;
+            }
+        }
+        if (!$con) {
+            $this->stderr('Consultation not found' . "\n");
+            return;
+        }
+
+        $categories = [];
+        foreach ($con->texts as $text) {
+            if (!isset($categories[$text->category])) {
+                $categories[$text->category] = '<?php' . "\n\n" . 'return [' . "\n";
+            }
+            $categories[$text->category] .= "\t'" . addslashes($text->textId) . "' => '" .
+                addslashes(trim($text->text)) . "',\n";
+        }
+
+        $baseDir = __DIR__ . '/../messages/' . $languageKey;
+        if (!file_exists($baseDir)) {
+            mkdir($baseDir);
+        }
+        foreach ($categories as $catKey => $code) {
+            $code .= "];\n";
+            file_put_contents($baseDir . '/' . $catKey . '.php', $code);
+            $this->stdout('Written: ' . $catKey . ".php\n");
         }
     }
 }

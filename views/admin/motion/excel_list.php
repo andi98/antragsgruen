@@ -15,7 +15,7 @@ use app\models\db\Motion;
 $controller   = $this->context;
 $consultation = $controller->consultation;
 
-PHPExcel_Settings::setZipClass(PHPExcel_Settings::PCLZIP);
+//PHPExcel_Settings::setZipClass(PHPExcel_Settings::PCLZIP);
 
 
 $hasTags = ($consultation->tags > 0);
@@ -122,8 +122,7 @@ foreach ($motions as $motion) {
             $text .= $section->getSectionType()->getMotionPlainText();
             $text .= "\n\n";
         }
-        $splitter = new LineSplitter($text, 80);
-        $lines = $splitter->splitLines();
+        $lines = LineSplitter::splitHtmlToLines($text, 80, '');
         if (count($lines) > $maxRows) {
             $maxRows = count($lines);
         }
@@ -131,13 +130,12 @@ foreach ($motions as $motion) {
     } else {
         foreach ($motionType->motionSections as $section) {
             $text = '';
-            foreach ($motion->sections as $sect) {
+            foreach ($motion->getActiveSections() as $sect) {
                 if ($sect->sectionId == $section->id) {
                     $text .= $sect->getSectionType()->getMotionPlainText();
                 }
             }
-            $splitter = new LineSplitter($text, 80);
-            $lines = $splitter->splitLines();
+            $lines = LineSplitter::splitHtmlToLines($text, 80, '');
             if (count($lines) > $maxRows) {
                 $maxRows = count($lines);
             }
